@@ -1,6 +1,6 @@
 import type { ActionHandler } from 'deepspace/worker'
 import type { Env } from '../../worker'
-import { createDecision } from './decisions'
+import { addArgument, castVote, createDecision, deleteArgument, retractVote } from './decisions'
 import {
   acceptInvite,
   createTeam,
@@ -20,4 +20,8 @@ export const actions: Record<string, ActionHandler<Env>> = {
   declineInvite,
   removeMember,
   createDecision,
+  castVote,
+  retractVote,
+  addArgument,
+  deleteArgument,
 }
