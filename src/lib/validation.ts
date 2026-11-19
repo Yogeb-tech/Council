@@ -21,6 +21,7 @@ export const LIMITS = {
   maxDeadlineLeadMs: 365 * 24 * 60 * 60 * 1000,
 } as const
 
+/** Required text: trimmed, non-empty, at most `max` chars. Errors name the field. */
 const trimmed = (max: number, label: string) =>
   z
     .string({ error: `${label} is required` })
@@ -28,6 +29,7 @@ const trimmed = (max: number, label: string) =>
     .min(1, `${label} is required`)
     .max(max, `${label} must be at most ${max} characters`)
 
+/** Optional text: trimmed, defaults to '' so rows always have a string. */
 const optionalTrimmed = (max: number, label: string) =>
   z
     .string()
@@ -36,6 +38,8 @@ const optionalTrimmed = (max: number, label: string) =>
     .optional()
     .default('')
 
+/** A record id from the client. Only shape-checked here; actions still
+ *  look the record up and check the caller may touch it. */
 const recordId = z.string({ error: 'Missing id' }).trim().min(1, 'Missing id').max(128)
 
 export const createTeamInput = z.object({
@@ -45,6 +49,7 @@ export const createTeamInput = z.object({
 
 export const inviteMemberInput = z.object({
   teamId: recordId,
+  // Lowercase before validating so invites match sign-in emails regardless of case.
   email: z
     .string({ error: 'Email is required' })
     .trim()
@@ -62,6 +67,11 @@ export const optionInput = z.object({
   description: optionalTrimmed(LIMITS.optionDescription, 'Option description'),
 })
 
+/**
+ * Schema for createDecision. A factory so `now` is read per call (and so
+ * tests can pin it). superRefine adds the checks that span fields: the
+ * deadline window and duplicate option titles.
+ */
 export function createDecisionInput(now: number = Date.now()) {
   return z
     .object({

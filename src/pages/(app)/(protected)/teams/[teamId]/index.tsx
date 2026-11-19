@@ -22,6 +22,8 @@ export default function TeamPage() {
   if (status === 'loading' || roleStatus === 'loading') {
     return <div className="mx-auto h-40 max-w-5xl animate-pulse px-4 py-8" aria-busy="true" />
   }
+  // A non-member receives no rows at all (server-side 'team' rule), so a
+  // missing team and "not your team" look the same here, on purpose.
   if (!team || !myRole || !userId) {
     return <NotFoundPanel title="Team not found" message="It may not exist, or you’re not a member." />
   }

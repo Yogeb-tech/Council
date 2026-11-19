@@ -26,6 +26,8 @@ function toLocalInputValue(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+// Stable React keys for option rows, so removing a middle row doesn't shift
+// typed text into the wrong input (array indexes would).
 let nextKey = 0
 const blankOption = (): OptionDraft => ({ key: nextKey++, title: '', description: '' })
 
@@ -37,6 +39,7 @@ export default function NewDecisionPage() {
   const { team, status } = useTeam(teamId)
   const { role, status: roleStatus } = useMyTeamRole(teamId, userId)
 
+  // Default deadline: three days out at 5 PM local time.
   const defaultDeadline = useMemo(() => {
     const d = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
     d.setHours(17, 0, 0, 0)
@@ -50,6 +53,7 @@ export default function NewDecisionPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Early returns come after every hook call above (Rules of Hooks).
   if (status === 'loading' || roleStatus === 'loading') {
     return <div className="mx-auto h-40 max-w-3xl animate-pulse px-4 py-8" aria-busy="true" />
   }
@@ -62,6 +66,8 @@ export default function NewDecisionPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    // datetime-local gives "2026-11-21T17:00" with no zone; new Date() reads
+    // it as local time, and toISOString() converts it to UTC for the server.
     const deadlineDate = new Date(deadline)
     const payload = {
       teamId,
@@ -73,6 +79,8 @@ export default function NewDecisionPage() {
         .filter((o) => o.title.trim() || o.description.trim())
         .map(({ title, description }) => ({ title, description })),
     }
+    // Same schema the server uses, for instant feedback. The server parses
+    // again, so skipping this in devtools gains nothing.
     const parsed = createDecisionInput().safeParse(payload)
     if (!parsed.success) return setError(firstIssue(parsed.error))
 

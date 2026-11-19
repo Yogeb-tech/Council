@@ -14,10 +14,12 @@ export interface Membership extends TeamMember {
   recordId: string
 }
 
+/** Build a failed ActionResult. `error` is shown to the user; `code` is for code to branch on. */
 export function fail(error: string, code: string): ActionResult<never> {
   return { success: false, error, code }
 }
 
+/** Build a successful ActionResult carrying `data`. */
 export function ok<T>(data: T): ActionResult<T> {
   return { success: true, data }
 }
@@ -28,10 +30,14 @@ export async function getMembership(
   teamId: string,
   userId: string,
 ): Promise<Membership | null> {
+  // uniqueOn [teamId, userId] guarantees at most one row, hence limit 1.
   const res = await tools.query<Record<string, unknown>>('team_members', {
     where: { teamId, userId },
     limit: 1,
   })
+  // Throw rather than return null: a failed lookup must not look like
+  // "not a member" and silently deny, nor be mistaken for anything else.
+  // The worker's error handler turns the throw into a 500.
   if (!res.success) throw new Error(`team_members lookup failed: ${res.error}`)
   const row = res.data.records[0]
   if (!row) return null
@@ -60,7 +66,11 @@ export async function requireTeamRole(
   return { membership }
 }
 
-/** The caller's email from their users row, lowercased; null if unknown. */
+/**
+ * The caller's email from their users row, lowercased; null if unknown.
+ * The users row is created by the RecordRoom when the user first connects,
+ * so on a brand-new account's very first request it may not exist yet.
+ */
 export async function getCallerEmail(tools: ActionTools, userId: string): Promise<string | null> {
   const res = await tools.get<Record<string, unknown>>('users', userId)
   if (!res.success) return null

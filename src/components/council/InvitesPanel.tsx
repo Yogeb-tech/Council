@@ -13,6 +13,8 @@ export function InvitesPanel({ invites, onChange }: { invites: MyInvite[]; onCha
 
   if (invites.length === 0) return null
 
+  // onChange re-fetches the list (invites aren't a live subscription), on
+  // success and on failure, so a stale invite disappears either way.
   const respond = async (invite: MyInvite, accept: boolean) => {
     setBusy(invite.inviteId)
     try {

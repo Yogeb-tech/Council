@@ -36,15 +36,24 @@ function canRemove(actor: TeamRole, target: TeamRole) {
   return actor === 'owner' ? target !== 'owner' : actor === 'admin' && target === 'member'
 }
 
+/**
+ * Member list, invite form and pending invites for one team.
+ * Buttons are shown or hidden by role for a tidy UI, but the server actions
+ * re-check every permission, so hiding a button is not the security boundary.
+ */
 export function MembersPanel({ teamId, teamName, myUserId, myRole }: Props) {
   const navigate = useNavigate()
   const { success, error } = useToast()
+  // Names and avatars come from the SDK's user roster (public identity only;
+  // emails are not exposed to other users).
   const { getUser } = useUserLookup()
   const { records: members } = useTeamMembers(teamId)
   const { records: invites } = useTeamInvites(teamId)
   const [confirm, setConfirm] = useState<{ userId: string; name: string } | null>(null)
   const isManager = myRole === 'owner' || myRole === 'admin'
 
+  // No local list update after removing: the member row is deleted on the
+  // server and the live useQuery subscription drops it from the list.
   const remove = async (userId: string) => {
     const leaving = userId === myUserId
     try {

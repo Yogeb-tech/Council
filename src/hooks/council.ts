@@ -21,19 +21,24 @@ import type {
   TeamRole,
 } from '../schemas/council-schema'
 
+/** My team_members rows: one per team I belong to, with my role. Drives the dashboard. */
 export function useMyMemberships(userId: string | null) {
   return useQuery<TeamMember>('team_members', {
+    // Before auth resolves there's no userId; '__none__' matches nothing
+    // (hooks can't be called conditionally, so we query for nothing instead).
     where: { userId: userId ?? '__none__' },
     orderBy: 'createdAt',
     orderDir: 'asc',
   })
 }
 
+/** One team row. `team` is null while loading or when I'm not a member. */
 export function useTeam(teamId: string) {
   const { records, status } = useQuery<Team>('teams', { where: { teamId }, limit: 1 })
   return { team: records[0] ?? null, status }
 }
 
+/** All members of a team (I only receive them if I'm a member). */
 export function useTeamMembers(teamId: string) {
   return useQuery<TeamMember>('team_members', {
     where: { teamId },
@@ -49,6 +54,7 @@ export function useMyTeamRole(teamId: string, userId: string | null) {
   return { role: (mine?.data.role ?? null) as TeamRole | null, status }
 }
 
+/** A team's pending invites, for the members panel. */
 export function useTeamInvites(teamId: string) {
   return useQuery<TeamInvite>('team_invites', {
     where: { teamId, status: 'pending' },
@@ -57,6 +63,7 @@ export function useTeamInvites(teamId: string) {
   })
 }
 
+/** A team's decisions, newest first. */
 export function useTeamDecisions(teamId: string) {
   return useQuery<Decision>('decisions', {
     where: { teamId },
@@ -65,6 +72,7 @@ export function useTeamDecisions(teamId: string) {
   })
 }
 
+/** One decision by id. `recordId` is a built-in filterable field. */
 export function useDecision(decisionId: string) {
   const { records, status } = useQuery<Decision>('decisions', {
     where: { recordId: decisionId },
@@ -73,6 +81,7 @@ export function useDecision(decisionId: string) {
   return { decision: records[0] ?? null, status }
 }
 
+/** A decision's options in the order the creator entered them. */
 export function useDecisionOptions(decisionId: string) {
   const { records, status } = useQuery<DecisionOption>('options', {
     where: { decisionId },
@@ -82,6 +91,7 @@ export function useDecisionOptions(decisionId: string) {
   return { options: records, status }
 }
 
+/** Shape returned by the listMyInvites action. */
 export interface MyInvite {
   inviteId: string
   teamId: string

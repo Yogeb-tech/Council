@@ -33,6 +33,11 @@ const teamScoped = {
   admin: TEAM_READ_ONLY,
 }
 
+/**
+ * Shared `teamId` column. `immutable` stops a row being moved to another
+ * team after creation; `required` stops a row with no team (which nobody
+ * but its creator could ever read).
+ */
 const teamIdColumn = {
   name: 'teamId',
   storage: 'text',
@@ -188,7 +193,11 @@ export const councilSchemas: CollectionSchema[] = [
   argumentsSchema,
 ]
 
-/* Row shapes, as the client sees them under `record.data`. */
+/*
+ * Row shapes, as the client sees them under `record.data`. useQuery returns
+ * envelopes: { recordId, data, createdBy, createdAt, updatedAt }.
+ * Keep these in sync with the columns above.
+ */
 export interface Team { teamId: string; name: string; description?: string }
 export interface TeamMember { teamId: string; userId: string; role: TeamRole; status?: string }
 export interface TeamInvite {

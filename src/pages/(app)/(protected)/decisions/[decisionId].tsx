@@ -14,6 +14,8 @@ export default function DecisionPage() {
   const { decisionId = '' } = useParams()
   const { decision, status } = useDecision(decisionId)
   const { options, status: optionsStatus } = useDecisionOptions(decisionId)
+  // Only used for the back link's label; '__none__' matches nothing until
+  // the decision (and so its teamId) has loaded.
   const { team } = useTeam(decision?.data.teamId ?? '__none__')
 
   if (status === 'loading') {

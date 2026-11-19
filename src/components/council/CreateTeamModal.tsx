@@ -12,6 +12,8 @@ export function CreateTeamModal({ open, onClose }: { open: boolean; onClose: () 
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  // Validate locally with the shared schema, call the createTeam action,
+  // then go straight to the new team's page.
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     const parsed = createTeamInput.safeParse({ name, description })

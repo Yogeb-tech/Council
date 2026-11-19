@@ -8,6 +8,7 @@
 
 import { getAuthToken } from 'deepspace'
 
+/** Thrown by callAction. `message` is safe to show to the user. */
 export class ActionError extends Error {
   constructor(message: string, readonly code?: string) {
     super(message)
@@ -17,6 +18,8 @@ export class ActionError extends Error {
 
 /** Call an action and return its `data`, or throw ActionError with a readable message. */
 export async function callAction<T>(name: string, params: Record<string, unknown> = {}): Promise<T> {
+  // Short-lived JWT (cached and auto-refreshed by the SDK). The server
+  // verifies it and derives `userId` from it; the client never sends its id.
   const token = await getAuthToken()
   if (!token) throw new ActionError('Please sign in again', 'unauthorized')
 
@@ -31,6 +34,8 @@ export async function callAction<T>(name: string, params: Record<string, unknown
     throw new ActionError('Network error. Check your connection and try again.', 'network')
   }
 
+  // Actions answer { success, data } or { success: false, error, code }.
+  // A non-JSON body (e.g. a proxy error page) parses to null.
   const body = (await res.json().catch(() => null)) as
     | { success: true; data: T }
     | { success: false; error?: string; code?: string }

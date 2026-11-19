@@ -39,6 +39,7 @@ export default function DashboardPage() {
 
       <InvitesPanel invites={invites.invites} onChange={() => void invites.refresh()} />
 
+      {/* Four states: loading skeleton, error, empty, or the team grid. */}
       {status === 'loading' ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true">
           {[0, 1, 2].map((i) => (
@@ -70,6 +71,12 @@ export default function DashboardPage() {
   )
 }
 
+/**
+ * One team on the dashboard. Each card opens its own subscriptions for the
+ * team row and its decisions. That's deliberate: a fresh subscription runs
+ * a fresh server query, so a team you joined a moment ago loads in full
+ * (see the note at the top of hooks/council.ts).
+ */
 function TeamCard({ teamId, role }: { teamId: string; role: TeamRole }) {
   const { team } = useTeam(teamId)
   const { records: decisions } = useTeamDecisions(teamId)
