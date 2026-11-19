@@ -35,7 +35,7 @@ export default function DecisionPage() {
 
       <header className="mb-6 space-y-2">
         <div className="flex items-start justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight">{d.title}</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">{d.title}</h1>
           <DecisionStatusBadge decision={d} />
         </div>
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">

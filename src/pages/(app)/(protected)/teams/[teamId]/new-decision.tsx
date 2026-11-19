@@ -96,7 +96,7 @@ export default function NewDecisionPage() {
       >
         <ArrowLeft className="size-4" aria-hidden /> {team.data.name}
       </Link>
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">New decision</h1>
+      <h1 className="mb-6 font-display text-3xl font-semibold tracking-tight">New decision</h1>
 
       <form onSubmit={submit} className="space-y-6" data-testid="create-decision-form" noValidate>
         <div className="space-y-1.5">

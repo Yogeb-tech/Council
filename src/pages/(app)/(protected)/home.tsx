@@ -24,7 +24,7 @@ export default function DashboardPage() {
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-8" data-testid="dashboard">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="font-display text-3xl font-semibold tracking-tight">
             {user?.name ? `Welcome, ${user.name.split(' ')[0]}` : 'Your teams'}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">

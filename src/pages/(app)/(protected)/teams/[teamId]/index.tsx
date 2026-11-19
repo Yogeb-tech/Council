@@ -35,7 +35,7 @@ export default function TeamPage() {
       </Link>
       <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight">{team.data.name}</h1>
+          <h1 className="truncate font-display text-3xl font-semibold tracking-tight">{team.data.name}</h1>
           {team.data.description && (
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{team.data.description}</p>
           )}

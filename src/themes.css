@@ -44,3 +44,32 @@
   --color-shell: #fafafa;
   --color-shell-panel: #ffffff;
 }
+
+/* Council — warm paper with deep chamber-green ink. The app's own theme. */
+[data-theme="council"] {
+  color-scheme: light;
+  --color-background: #f6f3ec;
+  --color-foreground: #1d1b17;
+  --color-card: #fffdf8;
+  --color-card-foreground: #1d1b17;
+  --color-popover: #fffdf8;
+  --color-popover-foreground: #1d1b17;
+  --color-primary: #1f5546;
+  --color-primary-foreground: #fbf8f1;
+  --color-secondary: #ebe5d8;
+  --color-secondary-foreground: #1d1b17;
+  --color-muted: #ece7dc;
+  --color-muted-foreground: #6a6357;
+  --color-accent: #e8e1d2;
+  --color-accent-foreground: #1d1b17;
+  --color-destructive: #b42318;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #ddd5c5;
+  --color-input: #d6cdbb;
+  --color-ring: #1f5546;
+  --radius: 0.75rem;
+  --shadow-card: 0 1px 2px 0 rgba(48, 38, 20, 0.05);
+  --shadow-card-hover: 0 6px 20px -6px rgba(48, 38, 20, 0.18);
+  --color-shell: #efeadf;
+  --color-shell-panel: #fffdf8;
+}
