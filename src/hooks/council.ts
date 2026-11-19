@@ -91,10 +91,18 @@ export interface MyInvite {
   createdAt: string
 }
 
+/** How often the dashboard re-checks for new invites while it's visible. */
+const INVITE_POLL_MS = 20_000
+
 /**
  * Invites addressed to me. The invitee isn't a team member yet, so the
  * `'team'` rule hides these rows from them; they come from an action that
- * matches on the caller's sign-in email instead.
+ * matches on the caller's sign-in email instead. Because that isn't a live
+ * subscription, it refetches on window focus and on a slow poll.
+ *
+ * Pass `enabled` only once the caller's `users` row exists (the profile has
+ * loaded): before that the action can't know the caller's email and would
+ * return nothing on a brand-new account's first visit.
  */
 export function useMyInvites(enabled: boolean) {
   const [invites, setInvites] = useState<MyInvite[]>([])
@@ -111,7 +119,17 @@ export function useMyInvites(enabled: boolean) {
   }, [])
 
   useEffect(() => {
-    if (enabled) void refresh()
+    if (!enabled) return
+    void refresh()
+    const onFocus = () => void refresh()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refresh()
+    }, INVITE_POLL_MS)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [enabled, refresh])
 
   return { invites, status, refresh }

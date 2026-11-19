@@ -17,7 +17,8 @@ import type { TeamRole } from '@/schemas/council-schema'
 export default function DashboardPage() {
   const { userId, user } = useAuthProfileReady({ requireUser: true })
   const { records: memberships, status } = useMyMemberships(userId)
-  const invites = useMyInvites(!!userId)
+  // Wait for the profile (the users row) so the invite lookup knows my email.
+  const invites = useMyInvites(!!userId && !!user)
   const [creating, setCreating] = useState(false)
 
   return (
@@ -25,7 +26,7 @@ export default function DashboardPage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight">
-            {user?.name ? `Welcome, ${user.name.split(' ')[0]}` : 'Your teams'}
+            Your teams
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Pick a team to see its open decisions, or start a new one.
