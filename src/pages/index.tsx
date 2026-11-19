@@ -51,7 +51,7 @@ function DecisionPreview() {
           <li key={o.name}>
             <div className="mb-1 flex justify-between text-sm">
               <span className={o.lead ? 'font-semibold text-foreground' : 'text-foreground/80'}>{o.name}</span>
-              <span className="tabular-nums text-muted-foreground">{o.votes} votes</span>
+              <span className="tabular-nums text-muted-foreground">{o.votes} {o.votes === 1 ? 'vote' : 'votes'}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div
