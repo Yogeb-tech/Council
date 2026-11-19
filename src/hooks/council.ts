@@ -13,12 +13,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { useQuery } from 'deepspace'
 import { callAction } from '../lib/actions'
 import type {
+  Argument,
   Decision,
   DecisionOption,
   Team,
   TeamInvite,
   TeamMember,
   TeamRole,
+  Vote,
 } from '../schemas/council-schema'
 
 /** My team_members rows: one per team I belong to, with my role. Drives the dashboard. */
@@ -89,6 +91,26 @@ export function useDecisionOptions(decisionId: string) {
     orderDir: 'asc',
   })
   return { options: records, status }
+}
+
+/**
+ * Every vote on a decision. Live: when anyone votes or changes their vote,
+ * the RecordRoom pushes the change and counts re-render, no polling.
+ * Teammates can see who voted for what; votes are not secret ballots.
+ */
+export function useDecisionVotes(decisionId: string) {
+  const { records, status } = useQuery<Vote>('votes', { where: { decisionId } })
+  return { votes: records, status }
+}
+
+/** Every argument on a decision, oldest first so threads read top-down. Live. */
+export function useDecisionArguments(decisionId: string) {
+  const { records, status } = useQuery<Argument>('arguments', {
+    where: { decisionId },
+    orderBy: 'createdAt',
+    orderDir: 'asc',
+  })
+  return { arguments: records, status }
 }
 
 /** Shape returned by the listMyInvites action. */

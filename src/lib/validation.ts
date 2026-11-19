@@ -15,6 +15,7 @@ export const LIMITS = {
   optionDescription: 1000,
   minOptions: 2,
   maxOptions: 10,
+  argumentContent: 2000,
   /** Shortest allowed voting window, so a deadline isn't already past on arrival. */
   minDeadlineLeadMs: 5 * 60 * 1000,
   /** Longest allowed voting window. */
@@ -113,6 +114,19 @@ export function createDecisionInput(now: number = Date.now()) {
       })
     })
 }
+
+export const castVoteInput = z.object({ decisionId: recordId, optionId: recordId })
+
+export const retractVoteInput = z.object({ decisionId: recordId })
+
+export const addArgumentInput = z.object({
+  decisionId: recordId,
+  optionId: recordId,
+  stance: z.enum(['for', 'against'], { error: 'Choose for or against' }),
+  content: trimmed(LIMITS.argumentContent, 'Argument'),
+})
+
+export const argumentIdInput = z.object({ argumentId: recordId })
 
 /** First human-readable message from a failed parse. */
 export function firstIssue(error: z.ZodError): string {
