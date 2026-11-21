@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Mail } from 'lucide-react'
 import { Button, useToast } from '@/components/ui'
 import { callAction } from '@/lib/actions'
+import { ACTION } from '@/lib/action-contract'
 import type { MyInvite } from '@/hooks/council'
 
 /** Invitations addressed to the signed-in user, with accept / decline. */
@@ -18,7 +19,7 @@ export function InvitesPanel({ invites, onChange }: { invites: MyInvite[]; onCha
   const respond = async (invite: MyInvite, accept: boolean) => {
     setBusy(invite.inviteId)
     try {
-      await callAction(accept ? 'acceptInvite' : 'declineInvite', { inviteId: invite.inviteId })
+      await callAction(accept ? ACTION.acceptInvite : ACTION.declineInvite, { inviteId: invite.inviteId })
       if (accept) {
         success(`You joined ${invite.teamName}`)
         navigate(`/teams/${invite.teamId}`)

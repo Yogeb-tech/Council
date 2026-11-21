@@ -20,6 +20,7 @@ import { NotFoundPanel } from '@/components/council/NotFoundPanel'
 import { OptionCard } from '@/components/council/OptionCard'
 import { PresenceBar } from '@/components/council/PresenceBar'
 import { formatDeadline, isDecisionOpen, relativeTime } from '@/components/council/format'
+import { allowsMultipleChoices, voteOptionIds } from '@/lib/decision-status'
 import {
   useDecision,
   useDecisionArguments,
@@ -29,6 +30,7 @@ import {
   useTeam,
 } from '@/hooks/council'
 import { callAction } from '@/lib/actions'
+import { ACTION } from '@/lib/action-contract'
 
 /** Re-render this often so "open" flips to "closed" when the deadline passes. */
 const CLOCK_TICK_MS = 30_000
@@ -53,9 +55,12 @@ export default function DecisionPage() {
     return () => window.clearInterval(id)
   }, [])
 
+  // A vote can back several options on a multi-choice decision.
   const votesByOption = useMemo(() => {
     const map = new Map<string, typeof votes>()
-    for (const v of votes) map.set(v.data.optionId, [...(map.get(v.data.optionId) ?? []), v])
+    for (const v of votes) {
+      for (const id of voteOptionIds(v.data)) map.set(id, [...(map.get(id) ?? []), v])
+    }
     return map
   }, [votes])
   const argsByOption = useMemo(() => {
@@ -64,6 +69,7 @@ export default function DecisionPage() {
     return map
   }, [args])
   const myVote = votes.find((v) => v.data.userId === userId) ?? null
+  const mySelection = myVote ? voteOptionIds(myVote.data) : []
   // Highest count wins; a tie means no single leader.
   const counts = options.map((o) => votesByOption.get(o.recordId)?.length ?? 0)
   const top = Math.max(0, ...counts)
@@ -77,8 +83,21 @@ export default function DecisionPage() {
   }
   const d = decision.data
   const open = isDecisionOpen(d, now)
+  const multiple = allowsMultipleChoices(d)
 
-  const run = async (name: 'castVote' | 'retractVote', params: Record<string, unknown>, failMsg: string) => {
+  // castVote always takes my whole selection; these turn a click on one
+  // option into the new selection.
+  const addChoice = (optionId: string) => {
+    const next = multiple ? [...mySelection, optionId] : [optionId]
+    void run(ACTION.castVote, { decisionId, optionIds: next }, 'Could not record your vote')
+  }
+  const removeChoice = (optionId: string) => {
+    const next = mySelection.filter((id) => id !== optionId)
+    if (next.length === 0) void run(ACTION.retractVote, { decisionId }, 'Could not withdraw your vote')
+    else void run(ACTION.castVote, { decisionId, optionIds: next }, 'Could not update your vote')
+  }
+
+  const run = async (name: typeof ACTION.castVote | typeof ACTION.retractVote, params: Record<string, unknown>, failMsg: string) => {
     setVoting(true)
     try {
       await callAction(name, params)
@@ -118,10 +137,21 @@ export default function DecisionPage() {
         <div className="mb-3 flex items-baseline justify-between gap-4">
           <h2 id="options-heading" className="text-sm font-semibold">
             Options
+            {multiple && (
+              <span className="ml-2 font-normal text-muted-foreground" data-testid="multiple-choice-note">
+                multiple choices allowed
+              </span>
+            )}
           </h2>
           <p className="text-xs text-muted-foreground" data-testid="vote-summary">
-            {votes.length} vote{votes.length === 1 ? '' : 's'} cast
-            {open ? (myVote ? ' · you can change your vote until it closes' : ' · pick one option') : ''}
+            {votes.length} {votes.length === 1 ? 'person has' : 'people have'} voted
+            {open
+              ? myVote
+                ? ' · you can change your vote until it closes'
+                : multiple
+                  ? ' · vote for every option you support'
+                  : ' · pick one option'
+              : ''}
           </p>
         </div>
         {optionsStatus === 'loading' || votesStatus === 'loading' ? (
@@ -134,16 +164,16 @@ export default function DecisionPage() {
                 index={i}
                 option={o}
                 votes={votesByOption.get(o.recordId) ?? []}
-                totalVotes={votes.length}
+                voterCount={votes.length}
                 args={argsByOption.get(o.recordId) ?? []}
-                isMyVote={myVote?.data.optionId === o.recordId}
+                isMyVote={mySelection.includes(o.recordId)}
                 isLeading={leaders === 1 && counts[i] === top}
                 open={open}
                 myUserId={userId}
                 myRole={myRole}
                 voting={voting}
-                onVote={(optionId) => run('castVote', { decisionId, optionId }, 'Could not record your vote')}
-                onRetract={() => run('retractVote', { decisionId }, 'Could not withdraw your vote')}
+                onVote={addChoice}
+                onRetract={removeChoice}
               />
             ))}
           </ol>

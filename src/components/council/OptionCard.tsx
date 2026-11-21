@@ -8,21 +8,25 @@
  * authorship, so hiding a button is a convenience, not the security boundary.
  */
 
-import { useState, type FormEvent } from 'react'
+import { useState, type SubmitEvent } from 'react'
 import type { RecordData } from 'deepspace'
 import { Check, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
 import { Button, Label, Textarea, cn, useToast } from '@/components/ui'
 import { callAction } from '@/lib/actions'
+import { ACTION } from '@/lib/action-contract'
 import { LIMITS } from '@/lib/validation'
 import type { Argument, DecisionOption, Stance, TeamRole, Vote } from '@/schemas/council-schema'
+import { isTeamManager } from '@/lib/team-roles'
 import { relativeTime } from './format'
 import { UserAvatar, useDisplayNameOf } from './UserAvatar'
 
 interface Props {
   index: number
   option: RecordData<DecisionOption>
+  /** Votes that back this option. */
   votes: RecordData<Vote>[]
-  totalVotes: number
+  /** Members who voted at all (the base for percentages). */
+  voterCount: number
   args: RecordData<Argument>[]
   isMyVote: boolean
   isLeading: boolean
@@ -31,15 +35,17 @@ interface Props {
   myRole: TeamRole | null
   /** Set while any vote request from this page is in flight. */
   voting: boolean
+  /** Add this option to my vote (single-choice: make it my vote). */
   onVote: (optionId: string) => void
-  onRetract: () => void
+  /** Take this option out of my vote. */
+  onRetract: (optionId: string) => void
 }
 
 export function OptionCard({
   index,
   option,
   votes,
-  totalVotes,
+  voterCount,
   args,
   isMyVote,
   isLeading,
@@ -52,10 +58,10 @@ export function OptionCard({
 }: Props) {
   const nameOf = useDisplayNameOf()
   const count = votes.length
-  const pct = totalVotes === 0 ? 0 : Math.round((count / totalVotes) * 100)
+  const pct = voterCount === 0 ? 0 : Math.round((count / voterCount) * 100)
   const forArgs = args.filter((a) => a.data.stance === 'for')
   const againstArgs = args.filter((a) => a.data.stance === 'against')
-  const canModerate = myRole === 'owner' || myRole === 'admin'
+  const canModerate = isTeamManager(myRole)
 
   return (
     <li
@@ -82,7 +88,7 @@ export function OptionCard({
               <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
                 <Check className="size-4" aria-hidden /> Your vote
               </span>
-              <Button size="sm" variant="ghost" onClick={onRetract} disabled={voting}>
+              <Button size="sm" variant="ghost" onClick={() => onRetract(option.recordId)} disabled={voting}>
                 Withdraw
               </Button>
             </div>
@@ -121,7 +127,7 @@ export function OptionCard({
           aria-valuenow={pct}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label={`${option.data.title}: ${pct}% of votes`}
+          aria-label={`${option.data.title}: backed by ${pct}% of voters`}
         >
           <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
         </div>
@@ -196,7 +202,7 @@ function ArgumentItem({
     setDeleting(true)
     try {
       // The live subscription removes it from the list once the server deletes it.
-      await callAction('deleteArgument', { argumentId: argument.recordId })
+      await callAction(ACTION.deleteArgument, { argumentId: argument.recordId })
     } catch (e) {
       error('Could not delete the argument', e instanceof Error ? e.message : undefined)
       setDeleting(false)
@@ -245,12 +251,12 @@ function ArgumentForm({ decisionId, optionId }: { decisionId: string; optionId: 
     )
   }
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!content.trim()) return
     setSaving(true)
     try {
-      await callAction('addArgument', { decisionId, optionId, stance, content })
+      await callAction(ACTION.addArgument, { decisionId, optionId, stance, content })
       setContent('')
       setExpanded(false)
     } catch (err) {

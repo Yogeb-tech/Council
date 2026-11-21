@@ -12,9 +12,9 @@ All Council collections live in the app's single RecordRoom scope
 | `teams`        | teamId (= its own record id), name, description                   | |
 | `team_members` | teamId, userId, role (`owner`/`admin`/`member`), status           | `uniqueOn: [teamId, userId]`. Read by the SDK's `'team'` rule. |
 | `team_invites` | teamId, email, role, status (`pending`/`accepted`/`declined`/`revoked`), teamName, invitedBy | Invite by email. |
-| `decisions`    | teamId, title, description, deadline (ISO), status (`open`/`closed`) | |
+| `decisions`    | teamId, title, description, deadline (ISO), status (`open`/`closed`), allowMultiple (1/0) | `allowMultiple` is set at creation and immutable. |
 | `options`      | teamId, decisionId, title, description, position                  | |
-| `votes`        | teamId, decisionId, optionId, userId                              | `uniqueOn: [decisionId, userId]`: one vote per member per decision. |
+| `votes`        | teamId, decisionId, optionId (first choice), optionIds (JSON list), userId | `uniqueOn: [decisionId, userId]`: one row per member per decision, holding their whole selection. |
 | `arguments`    | teamId, decisionId, optionId, userId, stance (`for`/`against`), content | Author, stance and option are immutable. |
 
 Every row carries `teamId` (immutable), even child rows like options, so the
@@ -47,6 +47,8 @@ Team roles: **owner** (creator; invites, removes anyone else, cannot leave),
 | Action          | Who                     | Does |
 |-----------------|-------------------------|------|
 | `createTeam`    | any signed-in user      | Creates the team and an `owner` membership (rolls back the team on failure). |
+| `deleteTeam`    | owner                   | Deletes the team and all its decisions, options, votes, arguments, invites and memberships. Re-runnable after a partial failure. |
+| `deleteMyAccount` | the caller            | Deletes the caller's Council data (see "Account deletion"). |
 | `inviteMember`  | owner/admin             | Creates a pending invite for an email; idempotent; refuses existing members. |
 | `revokeInvite`  | owner/admin             | Marks a pending invite revoked. |
 | `listMyInvites` | invitee                 | Pending invites whose email matches the caller's sign-in email. |
@@ -54,7 +56,7 @@ Team roles: **owner** (creator; invites, removes anyone else, cannot leave),
 | `declineInvite` | invitee                 | Marks the invite declined. |
 | `removeMember`  | owner/admin, or self    | Removes a member, or leaves the team. |
 | `createDecision`| any team member         | Creates the decision (status `open`) and its 2–10 options; rolls back on failure. |
-| `castVote`      | any team member, open decision | Votes for an option or moves the caller's vote; see "Voting" below. |
+| `castVote`      | any team member, open decision | Sets the caller's selection `{ optionIds }` (exactly one unless the decision allows multiple); see "Voting" below. |
 | `retractVote`   | any team member, open decision | Deletes the caller's own vote (idempotent). |
 | `addArgument`   | any team member, open decision | Posts a for/against argument (≤ 2000 chars) on one option; author = caller. |
 | `deleteArgument`| author, or team owner/admin; open decision | Deletes an argument. Closed decisions are frozen so the memo has a stable record. |
@@ -66,6 +68,17 @@ decision, never from params, and check the option belongs to that decision.
 deadline even before the cron job flips `status`.
 
 ### Voting and concurrency
+
+Decisions are single-choice by default; the creator can turn on "allow
+multiple choices" (approval voting), after which a member backs any number of
+options. Either way a member's vote is **one row** whose `optionIds` is their
+whole selection, and `castVote` replaces it. Keeping one row per member is
+what lets the unique constraint below guarantee no duplicates in both modes.
+(A row per option would need a different unique index, and the RecordRoom
+only ever adds unique indexes, never drops old ones, so changing `uniqueOn`
+on an existing collection isn't safe.) Rows written before multi-choice have
+only `optionId`; `voteOptionIds()` in `src/lib/decision-status.ts` reads both.
+
 
 One vote per member is enforced by the schema's `uniqueOn: [decisionId, userId]`,
 which the RecordRoom checks on create. The RecordRoom is a single Durable
@@ -79,6 +92,18 @@ counter to drift.
 
 Votes are visible to the team (each option shows who voted for it). This is a
 team decision tool, not a secret ballot.
+
+## Account deletion
+
+The DeepSpace sign-in (email/password, Google, GitHub) lives on DeepSpace's
+shared auth server and is used by every DeepSpace app. The SDK has no API for
+an app to delete it, and the auth server doesn't enable Better Auth's
+delete-user endpoint, so `deleteMyAccount` removes Council data only and the
+settings page says so. It hands each team the caller owns to an admin (else
+the longest-standing member), deletes teams with no one else in them, then
+deletes the caller's arguments, votes, memberships and invites to their email.
+The SDK-managed `users` row (name, email, avatar) is left alone because the
+RecordRoom maintains it on every connection.
 
 ## Real-time and presence
 
@@ -99,6 +124,12 @@ team decision tool, not a secret ballot.
 
 Inputs are validated with zod (`src/lib/validation.ts`); forms reuse the same
 schemas for instant feedback, but the action's parse is authoritative.
+
+Action names, error codes and team roles are typed constants
+(`ACTION`, `ACTION_ERROR`, `CLIENT_ERROR` in `src/lib/action-contract.ts`,
+`TEAM_ROLE` in the schema, role rules in `src/lib/team-roles.ts`), so a
+misspelt name or code is a compile error. `src/actions/index.ts` is typed
+`Record<ActionName, …>`, so the registry and the client can't drift.
 
 The client calls actions with `callAction()` (`src/lib/actions.ts`), a fetch
 with the user's JWT from `getAuthToken()`, following the DeepSpace

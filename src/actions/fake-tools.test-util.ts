@@ -5,6 +5,7 @@
  * actions' own authorization checks.
  */
 
+import { RECORD_NOT_FOUND } from 'deepspace/worker'
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 
 interface Row {
@@ -45,12 +46,12 @@ export function createFakeTools(actingUserId: string, store = new Map<string, Ma
     },
     async update(collection, recordId, data) {
       const row = table(collection).get(recordId)
-      if (!row) return err('not found')
+      if (!row) return err(RECORD_NOT_FOUND)
       row.data = { ...row.data, ...data }
       return okData({ recordId })
     },
     async remove(collection, recordId) {
-      if (!table(collection).delete(recordId)) return err('not found')
+      if (!table(collection).delete(recordId)) return err(RECORD_NOT_FOUND)
       return okData({ recordId })
     },
     async deleteWhere(collection, where) {
@@ -65,7 +66,7 @@ export function createFakeTools(actingUserId: string, store = new Map<string, Ma
     },
     async get(collection, recordId) {
       const row = table(collection).get(recordId)
-      if (!row) return err('not found')
+      if (!row) return err(RECORD_NOT_FOUND)
       return okData({ record: structuredClone(row) } as never)
     },
     async query(collection, options) {

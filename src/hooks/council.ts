@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useQuery } from 'deepspace'
 import { callAction } from '../lib/actions'
+import { ACTION } from '../lib/action-contract'
 import type {
   Argument,
   Decision,
@@ -142,7 +143,7 @@ export function useMyInvites(enabled: boolean) {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await callAction<{ invites: MyInvite[] }>('listMyInvites')
+      const data = await callAction<{ invites: MyInvite[] }>(ACTION.listMyInvites)
       setInvites(data.invites)
       setStatus('ready')
     } catch {

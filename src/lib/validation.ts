@@ -55,11 +55,19 @@ export const inviteMemberInput = z.object({
     .string({ error: 'Email is required' })
     .trim()
     .toLowerCase()
-    .pipe(z.email('Enter a valid email address').max(254)),
+    .pipe(
+      // The same rule as the browser's <input type="email">, which is what the
+      // sign-in form uses: any address someone can sign in with can be invited.
+      // Zod's default pattern is stricter (it rejects e.g. single-letter TLDs
+      // and consecutive dots that some providers allow).
+      z.email({ pattern: z.regexes.html5Email, error: 'Enter a valid email address' }).max(254),
+    ),
   role: z.enum(['admin', 'member']).optional().default('member'),
 })
 
 export const inviteIdInput = z.object({ inviteId: recordId })
+
+export const teamIdInput = z.object({ teamId: recordId })
 
 export const removeMemberInput = z.object({ teamId: recordId, userId: recordId })
 
@@ -84,6 +92,8 @@ export function createDecisionInput(now: number = Date.now()) {
         .array(optionInput)
         .min(LIMITS.minOptions, `Add at least ${LIMITS.minOptions} options`)
         .max(LIMITS.maxOptions, `Add at most ${LIMITS.maxOptions} options`),
+      /** Approval voting: members may back several options. */
+      allowMultiple: z.boolean().optional().default(false),
     })
     .superRefine((value, ctx) => {
       const deadline = Date.parse(value.deadline)
@@ -115,7 +125,14 @@ export function createDecisionInput(now: number = Date.now()) {
     })
 }
 
-export const castVoteInput = z.object({ decisionId: recordId, optionId: recordId })
+export const castVoteInput = z.object({
+  decisionId: recordId,
+  optionIds: z
+    .array(recordId, { error: 'Choose at least one option' })
+    .min(1, 'Choose at least one option')
+    .max(LIMITS.maxOptions, `Choose at most ${LIMITS.maxOptions} options`)
+    .refine((ids) => new Set(ids).size === ids.length, 'Each option can only be chosen once'),
+})
 
 export const retractVoteInput = z.object({ decisionId: recordId })
 

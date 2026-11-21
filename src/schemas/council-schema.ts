@@ -46,8 +46,10 @@ const teamIdColumn = {
   immutable: true,
 } as const
 
-export const TEAM_ROLES = ['owner', 'admin', 'member'] as const
-export type TeamRole = (typeof TEAM_ROLES)[number]
+/** Team roles (team_members.role). Use these instead of bare strings. */
+export const TEAM_ROLE = { owner: 'owner', admin: 'admin', member: 'member' } as const
+export type TeamRole = (typeof TEAM_ROLE)[keyof typeof TEAM_ROLE]
+export const TEAM_ROLES = [TEAM_ROLE.owner, TEAM_ROLE.admin, TEAM_ROLE.member] as const
 
 export const INVITE_STATUSES = ['pending', 'accepted', 'declined', 'revoked'] as const
 export type InviteStatus = (typeof INVITE_STATUSES)[number]
@@ -131,6 +133,10 @@ export const decisionsSchema: CollectionSchema = {
       interpretation: { kind: 'select', options: [...DECISION_STATUSES] },
       required: true,
     },
+    // 1 = members may back several options (approval voting). Unset on rows
+    // from before this column existed, which read as single-choice.
+    // Read it with allowsMultipleChoices() (src/lib/decision-status.ts).
+    { name: 'allowMultiple', storage: 'number', interpretation: { kind: 'boolean' }, immutable: true },
   ],
   teamField: 'teamId',
   permissions: teamScoped,
@@ -149,13 +155,18 @@ export const optionsSchema: CollectionSchema = {
   permissions: teamScoped,
 }
 
-/** One vote per user per decision; written by Day 2's vote action. */
+/**
+ * A member's vote on a decision: one row per member per decision, holding
+ * their whole selection. `optionId` is the first choice (all there was before
+ * multi-choice); `optionIds` is the full list. Read with voteOptionIds().
+ */
 export const votesSchema: CollectionSchema = {
   name: 'votes',
   columns: [
     teamIdColumn,
     { name: 'decisionId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
     { name: 'optionId', storage: 'text', interpretation: 'plain', required: true },
+    { name: 'optionIds', storage: 'text', interpretation: { kind: 'json' } },
     { name: 'userId', storage: 'text', interpretation: 'plain', required: true, immutable: true },
   ],
   uniqueOn: ['decisionId', 'userId'],
@@ -214,6 +225,8 @@ export interface Decision {
   description?: string
   deadline: string
   status: DecisionStatus
+  /** Stored as 1/0; use allowsMultipleChoices(). */
+  allowMultiple?: boolean | number
 }
 export interface DecisionOption {
   teamId: string
@@ -222,7 +235,15 @@ export interface DecisionOption {
   description?: string
   position: number
 }
-export interface Vote { teamId: string; decisionId: string; optionId: string; userId: string }
+export interface Vote {
+  teamId: string
+  decisionId: string
+  /** First choice. */
+  optionId: string
+  /** Full selection, in option order. Absent on votes from before multi-choice. */
+  optionIds?: string[]
+  userId: string
+}
 export interface Argument {
   teamId: string
   decisionId: string

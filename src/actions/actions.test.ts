@@ -244,22 +244,22 @@ describe('castVote', () => {
   it('records one vote per member and lets them change it', async () => {
     const store = setup()
     const { teamId, decisionId, postgres, sqlite } = await openDecision(store)
-    const first = await run<{ changed: boolean }>(store, 'bob', 'castVote', { decisionId, optionId: postgres })
+    const first = await run<{ changed: boolean }>(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] })
     expect(first).toMatchObject({ success: true, data: { changed: true } })
-    const same = await run<{ changed: boolean }>(store, 'bob', 'castVote', { decisionId, optionId: postgres })
+    const same = await run<{ changed: boolean }>(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] })
     expect(same).toMatchObject({ success: true, data: { changed: false } })
-    const moved = await run(store, 'bob', 'castVote', { decisionId, optionId: sqlite })
+    const moved = await run(store, 'bob', 'castVote', { decisionId, optionIds: [sqlite] })
     expect(moved.success).toBe(true)
-    expect(votes(store)).toEqual([{ teamId, decisionId, optionId: sqlite, userId: 'bob' }])
+    expect(votes(store)).toEqual([{ teamId, decisionId, optionId: sqlite, optionIds: [sqlite], userId: 'bob' }])
   })
 
   it('keeps a single vote when the same user votes concurrently', async () => {
     const store = setup()
     const { decisionId, postgres, sqlite } = await openDecision(store)
     const results = await Promise.all([
-      run(store, 'bob', 'castVote', { decisionId, optionId: postgres }),
-      run(store, 'bob', 'castVote', { decisionId, optionId: sqlite }),
-      run(store, 'bob', 'castVote', { decisionId, optionId: postgres }),
+      run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] }),
+      run(store, 'bob', 'castVote', { decisionId, optionIds: [sqlite] }),
+      run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] }),
     ])
     expect(results.every((r) => r.success)).toBe(true)
     expect(votes(store).filter((v) => v.userId === 'bob')).toHaveLength(1)
@@ -268,17 +268,17 @@ describe('castVote', () => {
   it('counts each member separately', async () => {
     const store = setup()
     const { decisionId, postgres } = await openDecision(store)
-    await run(store, 'alice', 'castVote', { decisionId, optionId: postgres })
-    await run(store, 'bob', 'castVote', { decisionId, optionId: postgres })
+    await run(store, 'alice', 'castVote', { decisionId, optionIds: [postgres] })
+    await run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] })
     expect(votes(store)).toHaveLength(2)
   })
 
   it('refuses outsiders as if the decision did not exist', async () => {
     const store = setup()
     const { decisionId, postgres } = await openDecision(store)
-    const res = await run(store, 'eve', 'castVote', { decisionId, optionId: postgres })
+    const res = await run(store, 'eve', 'castVote', { decisionId, optionIds: [postgres] })
     expect(res).toMatchObject({ success: false, code: 'decision_not_found' })
-    const missing = await run(store, 'bob', 'castVote', { decisionId: 'nope', optionId: postgres })
+    const missing = await run(store, 'bob', 'castVote', { decisionId: 'nope', optionIds: [postgres] })
     expect(missing).toMatchObject({ success: false, code: 'decision_not_found' })
     expect(votes(store)).toEqual([])
   })
@@ -293,7 +293,7 @@ describe('castVote', () => {
       options: [{ title: 'X' }, { title: 'Y' }],
     })
     if (!other.success) throw new Error()
-    const res = await run(store, 'bob', 'castVote', { decisionId: other.data.decisionId, optionId: a.postgres })
+    const res = await run(store, 'bob', 'castVote', { decisionId: other.data.decisionId, optionIds: [a.postgres] })
     expect(res).toMatchObject({ success: false, code: 'option_not_found' })
   })
 
@@ -301,14 +301,14 @@ describe('castVote', () => {
     const store = setup()
     const { decisionId, postgres } = await openDecision(store)
     expire(store, decisionId)
-    expect(await run(store, 'bob', 'castVote', { decisionId, optionId: postgres })).toMatchObject({
+    expect(await run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] })).toMatchObject({
       success: false,
       code: 'decision_closed',
     })
     const store2 = setup()
     const d2 = await openDecision(store2)
     store2.get('decisions')!.get(d2.decisionId)!.data.status = 'closed'
-    expect(await run(store2, 'bob', 'castVote', { decisionId: d2.decisionId, optionId: d2.postgres })).toMatchObject({
+    expect(await run(store2, 'bob', 'castVote', { decisionId: d2.decisionId, optionIds: [d2.postgres] })).toMatchObject({
       success: false,
       code: 'decision_closed',
     })
@@ -317,8 +317,8 @@ describe('castVote', () => {
   it('lets a member retract only their own vote', async () => {
     const store = setup()
     const { decisionId, postgres } = await openDecision(store)
-    await run(store, 'alice', 'castVote', { decisionId, optionId: postgres })
-    await run(store, 'bob', 'castVote', { decisionId, optionId: postgres })
+    await run(store, 'alice', 'castVote', { decisionId, optionIds: [postgres] })
+    await run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] })
     expect(await run(store, 'bob', 'retractVote', { decisionId })).toMatchObject({ success: true, data: { removed: true } })
     expect(await run(store, 'bob', 'retractVote', { decisionId })).toMatchObject({ success: true, data: { removed: false } })
     expect(votes(store).map((v) => v.userId)).toEqual(['alice'])
@@ -414,5 +414,149 @@ describe('arguments', () => {
     expect(await run(store, 'bob', 'deleteArgument', { argumentId: res.data.argumentId })).toMatchObject({
       code: 'decision_closed',
     })
+  })
+})
+
+describe('multiple-choice decisions', () => {
+  async function multiDecision(store: Store) {
+    const teamId = await teamWithBob(store)
+    const res = await run<{ decisionId: string }>(store, 'alice', 'createDecision', {
+      teamId,
+      title: 'Which tools should we trial?',
+      deadline: inAnHour(),
+      allowMultiple: true,
+      options: [{ title: 'A' }, { title: 'B' }, { title: 'C' }],
+    })
+    if (!res.success) throw new Error(res.error)
+    const ids = [...store.get('options')!.values()]
+      .filter((r) => r.data.decisionId === res.data.decisionId)
+      .sort((a, b) => Number(a.data.position) - Number(b.data.position))
+      .map((r) => r.recordId)
+    return { decisionId: res.data.decisionId, ids }
+  }
+
+  it('stores the setting, defaulting to single choice', async () => {
+    const store = setup()
+    const single = await openDecision(store)
+    expect(store.get('decisions')!.get(single.decisionId)!.data.allowMultiple).toBe(false)
+    const multi = await multiDecision(store)
+    expect(store.get('decisions')!.get(multi.decisionId)!.data.allowMultiple).toBe(true)
+  })
+
+  it('lets a member back several options in one vote row, in option order', async () => {
+    const store = setup()
+    const { decisionId, ids } = await multiDecision(store)
+    const res = await run(store, 'bob', 'castVote', { decisionId, optionIds: [ids[2], ids[0]] })
+    expect(res.success).toBe(true)
+    expect(votes(store)).toMatchObject([{ userId: 'bob', optionId: ids[0], optionIds: [ids[0], ids[2]] }])
+    // Replacing the selection updates the same row.
+    await run(store, 'bob', 'castVote', { decisionId, optionIds: [ids[1]] })
+    expect(votes(store)).toMatchObject([{ userId: 'bob', optionId: ids[1], optionIds: [ids[1]] }])
+  })
+
+  it('refuses several options on a single-choice decision', async () => {
+    const store = setup()
+    const { decisionId, postgres, sqlite } = await openDecision(store)
+    expect(await run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres, sqlite] })).toMatchObject({
+      success: false,
+      error: 'This decision allows only one choice',
+    })
+  })
+
+  it('refuses duplicates, empty selections and foreign options', async () => {
+    const store = setup()
+    const { decisionId, ids } = await multiDecision(store)
+    const other = await openDecision(store)
+    expect(await run(store, 'bob', 'castVote', { decisionId, optionIds: [ids[0], ids[0]] })).toMatchObject({
+      code: 'invalid_input',
+    })
+    expect(await run(store, 'bob', 'castVote', { decisionId, optionIds: [] })).toMatchObject({ code: 'invalid_input' })
+    expect(await run(store, 'bob', 'castVote', { decisionId, optionIds: [ids[0], other.postgres] })).toMatchObject({
+      code: 'option_not_found',
+    })
+    expect(votes(store)).toEqual([])
+  })
+})
+
+describe('deleteTeam', () => {
+  it('lets the owner delete the team and everything in it', async () => {
+    const store = setup()
+    const { teamId, decisionId, postgres } = await openDecision(store)
+    await run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] })
+    await run(store, 'bob', 'addArgument', { decisionId, optionId: postgres, stance: 'for', content: 'Yes' })
+    await run(store, 'alice', 'inviteMember', { teamId, email: 'eve@example.com' })
+    expect((await run(store, 'alice', 'deleteTeam', { teamId })).success).toBe(true)
+    for (const c of ['teams', 'team_members', 'team_invites', 'decisions', 'options', 'votes', 'arguments']) {
+      expect([...(store.get(c)?.values() ?? [])].filter((r) => r.data.teamId === teamId)).toEqual([])
+    }
+  })
+
+  it('leaves other teams alone', async () => {
+    const store = setup()
+    const keep = await run<{ teamId: string }>(store, 'alice', 'createTeam', { name: 'Keep' })
+    const { teamId } = await openDecision(store)
+    await run(store, 'alice', 'deleteTeam', { teamId })
+    if (!keep.success) throw new Error()
+    expect(store.get('teams')!.has(keep.data.teamId)).toBe(true)
+    expect([...store.get('team_members')!.values()].some((r) => r.data.teamId === keep.data.teamId)).toBe(true)
+  })
+
+  it('is owner-only', async () => {
+    const store = setup()
+    const teamId = await teamWithBob(store, 'admin')
+    expect(await run(store, 'bob', 'deleteTeam', { teamId })).toMatchObject({ code: 'forbidden' })
+    expect(await run(store, 'eve', 'deleteTeam', { teamId })).toMatchObject({ code: 'team_not_found' })
+    expect(store.get('teams')!.has(teamId)).toBe(true)
+  })
+})
+
+describe('deleteMyAccount', () => {
+  it('removes my votes, arguments, memberships and invites, and hands my team over', async () => {
+    const store = setup()
+    const { teamId, decisionId, postgres } = await openDecision(store) // alice owns, bob member
+    await run(store, 'alice', 'castVote', { decisionId, optionIds: [postgres] })
+    await run(store, 'alice', 'addArgument', { decisionId, optionId: postgres, stance: 'for', content: 'Mine' })
+    await run(store, 'bob', 'castVote', { decisionId, optionIds: [postgres] })
+    // A pending invite to alice from another team.
+    const other = await run<{ teamId: string }>(store, 'eve', 'createTeam', { name: 'Eve team' })
+    if (!other.success) throw new Error()
+    await run(store, 'eve', 'inviteMember', { teamId: other.data.teamId, email: 'alice@example.com' })
+
+    const res = await run(store, 'alice', 'deleteMyAccount')
+    expect(res).toMatchObject({ success: true, data: { teamsDeleted: 0, teamsTransferred: 1 } })
+
+    const rows = (c: string) => [...(store.get(c)?.values() ?? [])].map((r) => r.data)
+    expect(rows('votes').map((v) => v.userId)).toEqual(['bob'])
+    expect(rows('arguments')).toEqual([])
+    expect(rows('team_members').some((m) => m.userId === 'alice')).toBe(false)
+    expect(rows('team_invites').some((i) => i.email === 'alice@example.com')).toBe(false)
+    // Bob inherited the team; its decision survives.
+    expect(rows('team_members')).toContainEqual(expect.objectContaining({ teamId, userId: 'bob', role: 'owner' }))
+    expect(store.get('decisions')!.has(decisionId)).toBe(true)
+  })
+
+  it('deletes a team I own alone, and is safe to run twice', async () => {
+    const store = setup()
+    const solo = await run<{ teamId: string }>(store, 'alice', 'createTeam', { name: 'Solo' })
+    if (!solo.success) throw new Error()
+    expect(await run(store, 'alice', 'deleteMyAccount')).toMatchObject({ data: { teamsDeleted: 1 } })
+    expect(store.get('teams')!.has(solo.data.teamId)).toBe(false)
+    expect((await run(store, 'alice', 'deleteMyAccount')).success).toBe(true)
+  })
+})
+
+describe('invite email validation', () => {
+  it('accepts what the browser email field accepts', async () => {
+    const store = setup()
+    const team = await run<{ teamId: string }>(store, 'alice', 'createTeam', { name: 'Platform' })
+    if (!team.success) throw new Error()
+    for (const email of ['first.last+tag@sub.example.com', "o'brien@x.io", 'a@b.c', 'dev@localhost']) {
+      expect((await run(store, 'alice', 'inviteMember', { teamId: team.data.teamId, email })).success).toBe(true)
+    }
+    for (const email of ['no-at-sign', 'a@', '@b.com', 'a b@c.com']) {
+      expect(await run(store, 'alice', 'inviteMember', { teamId: team.data.teamId, email })).toMatchObject({
+        code: 'invalid_input',
+      })
+    }
   })
 })

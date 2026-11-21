@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type SubmitEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Input, Label, Modal, Textarea, useToast } from '@/components/ui'
 import { callAction } from '@/lib/actions'
+import { ACTION } from '@/lib/action-contract'
 import { createTeamInput, firstIssue, LIMITS } from '@/lib/validation'
 
 export function CreateTeamModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -14,14 +15,14 @@ export function CreateTeamModal({ open, onClose }: { open: boolean; onClose: () 
 
   // Validate locally with the shared schema, call the createTeam action,
   // then go straight to the new team's page.
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
     const parsed = createTeamInput.safeParse({ name, description })
     if (!parsed.success) return setError(firstIssue(parsed.error))
     setSubmitting(true)
     setError(null)
     try {
-      const { teamId } = await callAction<{ teamId: string }>('createTeam', parsed.data)
+      const { teamId } = await callAction<{ teamId: string }>(ACTION.createTeam, parsed.data)
       success('Team created', parsed.data.name)
       setName('')
       setDescription('')
