@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type SubmitEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUserLookup } from 'deepspace'
 import { X } from 'lucide-react'
@@ -19,9 +19,11 @@ import {
   useToast,
 } from '@/components/ui'
 import { callAction } from '@/lib/actions'
+import { ACTION } from '@/lib/action-contract'
 import { firstIssue, inviteMemberInput } from '@/lib/validation'
 import { useTeamInvites, useTeamMembers } from '@/hooks/council'
-import type { TeamRole } from '@/schemas/council-schema'
+import { TEAM_ROLE, type TeamRole } from '@/schemas/council-schema'
+import { canRemoveMember, isTeamManager } from '@/lib/team-roles'
 import { ROLE_LABEL } from './format'
 
 interface Props {
@@ -31,10 +33,6 @@ interface Props {
   myRole: TeamRole
 }
 
-/** Can `actor` remove `target`? Mirrors the removeMember action (the real check). */
-function canRemove(actor: TeamRole, target: TeamRole) {
-  return actor === 'owner' ? target !== 'owner' : actor === 'admin' && target === 'member'
-}
 
 /**
  * Member list, invite form and pending invites for one team.
@@ -50,14 +48,16 @@ export function MembersPanel({ teamId, teamName, myUserId, myRole }: Props) {
   const { records: members } = useTeamMembers(teamId)
   const { records: invites } = useTeamInvites(teamId)
   const [confirm, setConfirm] = useState<{ userId: string; name: string } | null>(null)
-  const isManager = myRole === 'owner' || myRole === 'admin'
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const isManager = isTeamManager(myRole)
 
   // No local list update after removing: the member row is deleted on the
   // server and the live useQuery subscription drops it from the list.
   const remove = async (userId: string) => {
     const leaving = userId === myUserId
     try {
-      await callAction('removeMember', { teamId, userId })
+      await callAction(ACTION.removeMember, { teamId, userId })
       if (leaving) {
         success(`You left ${teamName}`)
         navigate('/home')
@@ -69,9 +69,24 @@ export function MembersPanel({ teamId, teamName, myUserId, myRole }: Props) {
     }
   }
 
+  // Owner only; the deleteTeam action re-checks. The team page's live
+  // queries empty out as the rows go, so leave before that happens.
+  const deleteTeam = async () => {
+    setDeleting(true)
+    try {
+      await callAction(ACTION.deleteTeam, { teamId })
+      success(`Deleted ${teamName}`)
+      navigate('/home')
+    } catch (e) {
+      error('Could not delete the team', e instanceof Error ? e.message : undefined)
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
+
   const revoke = async (inviteId: string) => {
     try {
-      await callAction('revokeInvite', { inviteId })
+      await callAction(ACTION.revokeInvite, { inviteId })
     } catch (e) {
       error('Could not revoke the invite', e instanceof Error ? e.message : undefined)
     }
@@ -98,10 +113,10 @@ export function MembersPanel({ teamId, teamName, myUserId, myRole }: Props) {
                 {name}
                 {isMe && <span className="text-muted-foreground"> (you)</span>}
               </span>
-              <Badge variant={m.data.role === 'member' ? 'outline' : 'secondary'} size="sm">
+              <Badge variant={m.data.role === TEAM_ROLE.member ? 'outline' : 'secondary'} size="sm">
                 {ROLE_LABEL[m.data.role]}
               </Badge>
-              {!isMe && canRemove(myRole, m.data.role) && (
+              {!isMe && canRemoveMember(myRole, m.data.role) && (
                 <Button
                   size="icon"
                   variant="ghost"
@@ -138,7 +153,7 @@ export function MembersPanel({ teamId, teamName, myUserId, myRole }: Props) {
         </div>
       )}
 
-      {myRole !== 'owner' && (
+      {myRole !== TEAM_ROLE.owner ? (
         <Button
           variant="outline"
           size="sm"
@@ -146,7 +161,28 @@ export function MembersPanel({ teamId, teamName, myUserId, myRole }: Props) {
         >
           Leave team
         </Button>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+          onClick={() => setConfirmDelete(true)}
+          data-testid="delete-team-button"
+        >
+          Delete team
+        </Button>
       )}
+
+      <ConfirmModal
+        open={confirmDelete}
+        onClose={() => !deleting && setConfirmDelete(false)}
+        onConfirm={() => void deleteTeam()}
+        title={`Delete ${teamName}?`}
+        description="This permanently deletes the team with all of its decisions, votes, arguments and invites for everyone in it. It can’t be undone."
+        confirmText="Delete team"
+        variant="destructive"
+        loading={deleting}
+      />
 
       <ConfirmModal
         open={confirm !== null}
@@ -175,14 +211,14 @@ function InviteForm({ teamId }: { teamId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
     const parsed = inviteMemberInput.safeParse({ teamId, email, role })
     if (!parsed.success) return setError(firstIssue(parsed.error))
     setSubmitting(true)
     setError(null)
     try {
-      const res = await callAction<{ alreadyInvited: boolean }>('inviteMember', parsed.data)
+      const res = await callAction<{ alreadyInvited: boolean }>(ACTION.inviteMember, parsed.data)
       success(res.alreadyInvited ? 'Already invited' : 'Invite sent', parsed.data.email)
       setEmail('')
     } catch (e) {

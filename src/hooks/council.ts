@@ -12,13 +12,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useQuery } from 'deepspace'
 import { callAction } from '../lib/actions'
+import { ACTION } from '../lib/action-contract'
 import type {
+  Argument,
   Decision,
   DecisionOption,
   Team,
   TeamInvite,
   TeamMember,
   TeamRole,
+  Vote,
 } from '../schemas/council-schema'
 
 /** My team_members rows: one per team I belong to, with my role. Drives the dashboard. */
@@ -91,6 +94,26 @@ export function useDecisionOptions(decisionId: string) {
   return { options: records, status }
 }
 
+/**
+ * Every vote on a decision. Live: when anyone votes or changes their vote,
+ * the RecordRoom pushes the change and counts re-render, no polling.
+ * Teammates can see who voted for what; votes are not secret ballots.
+ */
+export function useDecisionVotes(decisionId: string) {
+  const { records, status } = useQuery<Vote>('votes', { where: { decisionId } })
+  return { votes: records, status }
+}
+
+/** Every argument on a decision, oldest first so threads read top-down. Live. */
+export function useDecisionArguments(decisionId: string) {
+  const { records, status } = useQuery<Argument>('arguments', {
+    where: { decisionId },
+    orderBy: 'createdAt',
+    orderDir: 'asc',
+  })
+  return { arguments: records, status }
+}
+
 /** Shape returned by the listMyInvites action. */
 export interface MyInvite {
   inviteId: string
@@ -120,7 +143,7 @@ export function useMyInvites(enabled: boolean) {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await callAction<{ invites: MyInvite[] }>('listMyInvites')
+      const data = await callAction<{ invites: MyInvite[] }>(ACTION.listMyInvites)
       setInvites(data.invites)
       setStatus('ready')
     } catch {

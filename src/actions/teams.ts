@@ -8,7 +8,8 @@
  *   member — can read team data and create decisions.
  */
 
-import type { ActionHandler, ActionResult } from 'deepspace/worker'
+import { RECORD_NOT_FOUND } from 'deepspace/worker'
+import type { ActionHandler, ActionResult, ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import {
   createTeamInput,
@@ -16,12 +17,13 @@ import {
   inviteIdInput,
   inviteMemberInput,
   removeMemberInput,
+  teamIdInput,
 } from '../lib/validation'
-import type { Team, TeamInvite } from '../schemas/council-schema'
+import { TEAM_ROLE, type Team, type TeamInvite } from '../schemas/council-schema'
+import { ACTION_ERROR } from '../lib/action-contract'
+import { canRemoveMember, TEAM_MANAGERS } from '../lib/team-roles'
 import { fail, getCallerEmail, getMembership, ok, requireTeamRole } from './authz'
 
-/** Team roles allowed to manage membership (invite, revoke, remove). */
-const MANAGERS = ['owner', 'admin'] as const
 
 /*
  * Every action below follows the same shape:
@@ -42,7 +44,7 @@ const MANAGERS = ['owner', 'admin'] as const
  */
 export const createTeam: ActionHandler<Env> = async ({ userId, params, tools }) => {
   const parsed = createTeamInput.safeParse(params)
-  if (!parsed.success) return fail(firstIssue(parsed.error), 'invalid_input')
+  if (!parsed.success) return fail(firstIssue(parsed.error), ACTION_ERROR.invalidInput)
 
   // teamId is the team row's own id, so `teamField: 'teamId'` scopes the
   // team row itself exactly like every other team-owned row.
@@ -50,20 +52,20 @@ export const createTeam: ActionHandler<Env> = async ({ userId, params, tools }) 
   const team: Team = { teamId, ...parsed.data }
   // Passing `teamId` as the third argument makes it the record id too.
   const created = await tools.create('teams', { ...team }, teamId)
-  if (!created.success) return fail(created.error, 'create_failed')
+  if (!created.success) return fail(created.error, ACTION_ERROR.createFailed)
 
   // The owner membership is what lets the creator see the team at all:
   // the 'team' read rule looks the caller up in team_members.
   const member = await tools.create('team_members', {
     teamId,
     userId,
-    role: 'owner',
+    role: TEAM_ROLE.owner,
     status: 'active',
   })
   if (!member.success) {
     // Don't leave an ownerless team behind.
     await tools.remove('teams', teamId)
-    return fail(member.error, 'create_failed')
+    return fail(member.error, ACTION_ERROR.createFailed)
   }
   return ok({ teamId })
 }
@@ -76,21 +78,21 @@ export const createTeam: ActionHandler<Env> = async ({ userId, params, tools }) 
  */
 export const inviteMember: ActionHandler<Env> = async ({ userId, params, tools }) => {
   const parsed = inviteMemberInput.safeParse(params)
-  if (!parsed.success) return fail(firstIssue(parsed.error), 'invalid_input')
+  if (!parsed.success) return fail(firstIssue(parsed.error), ACTION_ERROR.invalidInput)
   const { teamId, email, role } = parsed.data
 
-  const auth = await requireTeamRole(tools, teamId, userId, MANAGERS)
+  const auth = await requireTeamRole(tools, teamId, userId, TEAM_MANAGERS)
   if ('failure' in auth) return auth.failure
 
   const callerEmail = await getCallerEmail(tools, userId)
-  if (callerEmail === email) return fail('You are already in this team', 'already_member')
+  if (callerEmail === email) return fail('You are already in this team', ACTION_ERROR.alreadyMember)
 
   // Already a member? (users are matched by their sign-in email)
   const users = await tools.query('users', { where: { email }, limit: 5 })
   if (users.success) {
     for (const user of users.data.records) {
       if (await getMembership(tools, teamId, user.recordId)) {
-        return fail(`${email} is already in this team`, 'already_member')
+        return fail(`${email} is already in this team`, ACTION_ERROR.alreadyMember)
       }
     }
   }
@@ -110,7 +112,7 @@ export const inviteMember: ActionHandler<Env> = async ({ userId, params, tools }
   const teamName = team.success ? String(team.data.record.data.name ?? '') : ''
   const invite: TeamInvite = { teamId, email, role, status: 'pending', teamName, invitedBy: userId }
   const created = await tools.create('team_invites', { ...invite })
-  if (!created.success) return fail(created.error, 'create_failed')
+  if (!created.success) return fail(created.error, ACTION_ERROR.createFailed)
   return ok({ inviteId: created.data.recordId, alreadyInvited: false })
 }
 
@@ -121,21 +123,21 @@ export const inviteMember: ActionHandler<Env> = async ({ userId, params, tools }
  */
 export const revokeInvite: ActionHandler<Env> = async ({ userId, params, tools }) => {
   const parsed = inviteIdInput.safeParse(params)
-  if (!parsed.success) return fail(firstIssue(parsed.error), 'invalid_input')
+  if (!parsed.success) return fail(firstIssue(parsed.error), ACTION_ERROR.invalidInput)
 
   const found = await tools.get('team_invites', parsed.data.inviteId)
-  if (!found.success) return fail('Invite not found', 'invite_not_found')
+  if (!found.success) return fail('Invite not found', ACTION_ERROR.inviteNotFound)
   const invite = found.data.record.data as unknown as TeamInvite
 
   // The team comes from the stored invite, never from params, so a caller
   // can't pass their own teamId to revoke another team's invite.
   // Outsiders get "not found" rather than "forbidden" so they learn nothing.
-  const auth = await requireTeamRole(tools, invite.teamId, userId, MANAGERS)
-  if ('failure' in auth) return fail('Invite not found', 'invite_not_found')
-  if (invite.status !== 'pending') return fail('This invite is no longer pending', 'invite_closed')
+  const auth = await requireTeamRole(tools, invite.teamId, userId, TEAM_MANAGERS)
+  if ('failure' in auth) return fail('Invite not found', ACTION_ERROR.inviteNotFound)
+  if (invite.status !== 'pending') return fail('This invite is no longer pending', ACTION_ERROR.inviteClosed)
 
   const updated = await tools.update('team_invites', parsed.data.inviteId, { status: 'revoked' })
-  if (!updated.success) return fail(updated.error, 'update_failed')
+  if (!updated.success) return fail(updated.error, ACTION_ERROR.updateFailed)
   return ok({ inviteId: parsed.data.inviteId })
 }
 
@@ -155,7 +157,7 @@ export const listMyInvites: ActionHandler<Env> = async ({ userId, tools }) => {
     orderDir: 'desc',
     limit: 50,
   })
-  if (!res.success) return fail(res.error, 'query_failed')
+  if (!res.success) return fail(res.error, ACTION_ERROR.queryFailed)
 
   // Look up each inviter's display name so the dashboard can say who invited you.
   const invites = await Promise.all(
@@ -193,17 +195,17 @@ async function loadOwnInvite(
   params: Record<string, unknown>,
 ): Promise<{ failure: ActionResult<never> } | { inviteId: string; invite: TeamInvite }> {
   const parsed = inviteIdInput.safeParse(params)
-  if (!parsed.success) return { failure: fail(firstIssue(parsed.error), 'invalid_input') }
+  if (!parsed.success) return { failure: fail(firstIssue(parsed.error), ACTION_ERROR.invalidInput) }
 
   const found = await tools.get('team_invites', parsed.data.inviteId)
   const email = await getCallerEmail(tools, userId)
   const invite = found.success ? (found.data.record.data as unknown as TeamInvite) : null
   // Someone else's invite answers exactly like a missing one.
   if (!invite || !email || invite.email !== email) {
-    return { failure: fail('Invite not found', 'invite_not_found') }
+    return { failure: fail('Invite not found', ACTION_ERROR.inviteNotFound) }
   }
   if (invite.status !== 'pending') {
-    return { failure: fail('This invite is no longer pending', 'invite_closed') }
+    return { failure: fail('This invite is no longer pending', ACTION_ERROR.inviteClosed) }
   }
   return { inviteId: parsed.data.inviteId, invite }
 }
@@ -226,10 +228,10 @@ export const acceptInvite: ActionHandler<Env> = async ({ userId, params, tools }
       role: invite.role,
       status: 'active',
     })
-    if (!member.success) return fail(member.error, 'create_failed')
+    if (!member.success) return fail(member.error, ACTION_ERROR.createFailed)
   }
   const updated = await tools.update('team_invites', inviteId, { status: 'accepted' })
-  if (!updated.success) return fail(updated.error, 'update_failed')
+  if (!updated.success) return fail(updated.error, ACTION_ERROR.updateFailed)
   return ok({ teamId: invite.teamId })
 }
 
@@ -242,7 +244,7 @@ export const declineInvite: ActionHandler<Env> = async ({ userId, params, tools 
   const loaded = await loadOwnInvite(tools, userId, params)
   if ('failure' in loaded) return loaded.failure
   const updated = await tools.update('team_invites', loaded.inviteId, { status: 'declined' })
-  if (!updated.success) return fail(updated.error, 'update_failed')
+  if (!updated.success) return fail(updated.error, ACTION_ERROR.updateFailed)
   return ok({ inviteId: loaded.inviteId })
 }
 
@@ -254,31 +256,86 @@ export const declineInvite: ActionHandler<Env> = async ({ userId, params, tools 
  */
 export const removeMember: ActionHandler<Env> = async ({ userId, params, tools }) => {
   const parsed = removeMemberInput.safeParse(params)
-  if (!parsed.success) return fail(firstIssue(parsed.error), 'invalid_input')
+  if (!parsed.success) return fail(firstIssue(parsed.error), ACTION_ERROR.invalidInput)
   const { teamId, userId: targetId } = parsed.data
 
   const caller = await getMembership(tools, teamId, userId)
-  if (!caller) return fail('Team not found', 'team_not_found')
+  if (!caller) return fail('Team not found', ACTION_ERROR.teamNotFound)
 
   // Case 1: leaving the team yourself.
   if (targetId === userId) {
-    if (caller.role === 'owner') {
-      return fail('The team owner cannot leave the team', 'owner_cannot_leave')
+    if (caller.role === TEAM_ROLE.owner) {
+      return fail('The team owner cannot leave the team', ACTION_ERROR.ownerCannotLeave)
     }
     const removed = await tools.remove('team_members', caller.recordId)
-    if (!removed.success) return fail(removed.error, 'delete_failed')
+    if (!removed.success) return fail(removed.error, ACTION_ERROR.deleteFailed)
     return ok({ teamId, userId: targetId })
   }
 
   // Case 2: removing someone else. Check both roles: owners can remove
   // anyone else, admins only plain members, members nobody.
   const target = await getMembership(tools, teamId, targetId)
-  if (!target) return fail('That person is not in this team', 'member_not_found')
-  const allowed =
-    caller.role === 'owner' || (caller.role === 'admin' && target.role === 'member')
-  if (!allowed) return fail('You do not have permission to remove that member', 'forbidden')
+  if (!target) return fail('That person is not in this team', ACTION_ERROR.memberNotFound)
+  if (!canRemoveMember(caller.role, target.role)) return fail('You do not have permission to remove that member', ACTION_ERROR.forbidden)
 
   const removed = await tools.remove('team_members', target.recordId)
-  if (!removed.success) return fail(removed.error, 'delete_failed')
+  if (!removed.success) return fail(removed.error, ACTION_ERROR.deleteFailed)
   return ok({ teamId, userId: targetId })
+}
+
+/** deleteWhere's per-call cap (SDK max is 500). */
+const DELETE_BATCH = 500
+
+/** Delete every row of `collection` matching `where`, a batch at a time. */
+export async function drain(tools: ActionTools, collection: string, where: Record<string, unknown>) {
+  for (;;) {
+    const res = await tools.deleteWhere(collection, where, DELETE_BATCH)
+    if (!res.success) throw new Error(`${collection} delete failed: ${res.error}`)
+    if (res.data.deleted < DELETE_BATCH) return
+  }
+}
+
+/**
+ * Delete a team and everything in it. Children go first and the owner's
+ * membership plus the team row go last, so if anything fails partway the
+ * team still exists, its owner still sees it, and deleting again resumes
+ * where it stopped (every step is a "delete what's left").
+ *
+ * No permission check: callers must have checked the caller may do this.
+ */
+export async function deleteTeamCascade(tools: ActionTools, teamId: string): Promise<void> {
+  for (const collection of ['arguments', 'votes', 'options', 'decisions', 'team_invites']) {
+    await drain(tools, collection, { teamId })
+  }
+  // Non-owner memberships, then the owner's, then the team itself.
+  for (const role of [TEAM_ROLE.member, TEAM_ROLE.admin, TEAM_ROLE.owner]) {
+    await drain(tools, 'team_members', { teamId, role })
+  }
+  const removed = await tools.remove('teams', teamId)
+  // Already gone counts as done, so a retry after a partial failure succeeds.
+  if (!removed.success && removed.error !== RECORD_NOT_FOUND) {
+    throw new Error(`team delete failed: ${removed.error}`)
+  }
+}
+
+/**
+ * Delete a team with all its decisions, options, votes, arguments, invites
+ * and memberships. Owner only.
+ * Params: { teamId }  →  { teamId }
+ */
+export const deleteTeam: ActionHandler<Env> = async ({ userId, params, tools }) => {
+  const parsed = teamIdInput.safeParse(params)
+  if (!parsed.success) return fail(firstIssue(parsed.error), ACTION_ERROR.invalidInput)
+  const { teamId } = parsed.data
+
+  const auth = await requireTeamRole(tools, teamId, userId, [TEAM_ROLE.owner])
+  if ('failure' in auth) return auth.failure
+
+  try {
+    await deleteTeamCascade(tools, teamId)
+  } catch (e) {
+    console.error(`[deleteTeam] ${teamId}: ${e instanceof Error ? e.message : String(e)}`)
+    return fail('Could not delete the whole team. Try again to finish.', ACTION_ERROR.deleteFailed)
+  }
+  return ok({ teamId })
 }

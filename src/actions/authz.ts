@@ -9,13 +9,14 @@
 
 import type { ActionResult, ActionTools } from 'deepspace/worker'
 import type { TeamMember, TeamRole } from '../schemas/council-schema'
+import { ACTION_ERROR, type ActionErrorCode } from '../lib/action-contract'
 
 export interface Membership extends TeamMember {
   recordId: string
 }
 
 /** Build a failed ActionResult. `error` is shown to the user; `code` is for code to branch on. */
-export function fail(error: string, code: string): ActionResult<never> {
+export function fail(error: string, code: ActionErrorCode): ActionResult<never> {
   return { success: false, error, code }
 }
 
@@ -59,9 +60,9 @@ export async function requireTeamRole(
   roles: readonly TeamRole[],
 ): Promise<{ membership: Membership } | { failure: ActionResult<never> }> {
   const membership = await getMembership(tools, teamId, userId)
-  if (!membership) return { failure: fail('Team not found', 'team_not_found') }
+  if (!membership) return { failure: fail('Team not found', ACTION_ERROR.teamNotFound) }
   if (!roles.includes(membership.role)) {
-    return { failure: fail('You do not have permission to do that in this team', 'forbidden') }
+    return { failure: fail('You do not have permission to do that in this team', ACTION_ERROR.forbidden) }
   }
   return { membership }
 }

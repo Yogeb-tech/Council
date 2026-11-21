@@ -1,13 +1,32 @@
 /**
- * Example gated page. Reached at /settings — no auth logic lives here
- * because (protected)/_layout.tsx already wraps the subtree in <AuthGate>.
+ * Account settings: who you're signed in as, sign out, and delete your
+ * Council data. Sign-in is already required by (protected)/_layout.tsx.
  */
 
+import { useState } from 'react'
 import { signOut, useUser } from 'deepspace'
-import { Button } from '@/components/ui'
+import { Button, ConfirmModal, useToast } from '@/components/ui'
+import { callAction } from '@/lib/actions'
+import { ACTION } from '@/lib/action-contract'
 
 export default function SettingsPage() {
   const { user } = useUser()
+  const { error } = useToast()
+  const [confirming, setConfirming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  const deleteAccount = async () => {
+    setDeleting(true)
+    try {
+      await callAction(ACTION.deleteMyAccount)
+      // Nothing of ours is left in Council; end the session too.
+      await signOut()
+    } catch (e) {
+      error('Could not delete your account', e instanceof Error ? e.message : undefined)
+      setDeleting(false)
+      setConfirming(false)
+    }
+  }
 
   return (
     // No background on page wrappers — pages render into whatever the app's
@@ -35,7 +54,34 @@ export default function SettingsPage() {
             Sign out
           </Button>
         </section>
+
+        <section className="mt-8 rounded-lg border border-destructive/40 bg-card p-6" data-testid="delete-account">
+          <h2 className="mb-2 text-lg font-semibold">Delete account</h2>
+          <p className="text-sm text-muted-foreground">
+            Deletes everything Council holds about you: your votes, arguments, team memberships and invites.
+            Teams you own pass to an admin (or the longest-standing member); teams where you’re the only member
+            are deleted.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your DeepSpace sign-in is shared with other DeepSpace apps, and Council can’t delete it. Contact
+            DeepSpace to remove the login itself.
+          </p>
+          <Button variant="destructive" className="mt-4" onClick={() => setConfirming(true)}>
+            Delete my Council account
+          </Button>
+        </section>
       </div>
+
+      <ConfirmModal
+        open={confirming}
+        onClose={() => !deleting && setConfirming(false)}
+        onConfirm={() => void deleteAccount()}
+        title="Delete your Council account?"
+        description="Your votes, arguments and memberships are removed for good, and you’ll be signed out. This can’t be undone."
+        confirmText="Delete account"
+        variant="destructive"
+        loading={deleting}
+      />
     </div>
   )
 }

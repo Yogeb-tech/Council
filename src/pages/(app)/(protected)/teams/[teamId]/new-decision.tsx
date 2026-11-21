@@ -4,13 +4,14 @@
  * which also checks the caller belongs to the team.
  */
 
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type SubmitEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuthProfileReady } from 'deepspace'
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
-import { Button, Input, Label, Textarea, useToast } from '@/components/ui'
+import { Button, Input, Label, Switch, Textarea, useToast } from '@/components/ui'
 import { NotFoundPanel } from '@/components/council/NotFoundPanel'
 import { callAction } from '@/lib/actions'
+import { ACTION } from '@/lib/action-contract'
 import { createDecisionInput, firstIssue, LIMITS } from '@/lib/validation'
 import { useMyTeamRole, useTeam } from '@/hooks/council'
 
@@ -50,6 +51,7 @@ export default function NewDecisionPage() {
   const [description, setDescription] = useState('')
   const [deadline, setDeadline] = useState(defaultDeadline)
   const [options, setOptions] = useState<OptionDraft[]>(() => [blankOption(), blankOption()])
+  const [allowMultiple, setAllowMultiple] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -64,7 +66,7 @@ export default function NewDecisionPage() {
   const updateOption = (key: number, patch: Partial<OptionDraft>) =>
     setOptions((prev) => prev.map((o) => (o.key === key ? { ...o, ...patch } : o)))
 
-  const submit = async (event: FormEvent) => {
+  const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault()
     // datetime-local gives "2026-11-21T17:00" with no zone; new Date() reads
     // it as local time, and toISOString() converts it to UTC for the server.
@@ -74,6 +76,7 @@ export default function NewDecisionPage() {
       title,
       description,
       deadline: Number.isNaN(deadlineDate.getTime()) ? '' : deadlineDate.toISOString(),
+      allowMultiple,
       // Blank trailing rows are ignored rather than reported.
       options: options
         .filter((o) => o.title.trim() || o.description.trim())
@@ -87,7 +90,7 @@ export default function NewDecisionPage() {
     setSubmitting(true)
     setError(null)
     try {
-      const { decisionId } = await callAction<{ decisionId: string }>('createDecision', parsed.data)
+      const { decisionId } = await callAction<{ decisionId: string }>(ACTION.createDecision, parsed.data)
       success('Decision created', parsed.data.title)
       navigate(`/decisions/${decisionId}`)
     } catch (e) {
@@ -189,6 +192,21 @@ export default function NewDecisionPage() {
             <Plus aria-hidden /> Add option
           </Button>
         </fieldset>
+
+        <div className="flex items-start gap-3">
+          <Switch
+            id="decision-allow-multiple"
+            checked={allowMultiple}
+            onCheckedChange={setAllowMultiple}
+            data-testid="allow-multiple-switch"
+          />
+          <div className="space-y-0.5">
+            <Label htmlFor="decision-allow-multiple">Allow multiple choices</Label>
+            <p className="text-xs text-muted-foreground">
+              Members can vote for every option they support, instead of picking one. This can’t be changed later.
+            </p>
+          </div>
+        </div>
 
         {error && (
           <p role="alert" className="text-sm text-destructive">
