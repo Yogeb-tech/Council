@@ -69,6 +69,7 @@ export const inviteIdInput = z.object({ inviteId: recordId })
 
 export const teamIdInput = z.object({ teamId: recordId })
 
+
 export const removeMemberInput = z.object({ teamId: recordId, userId: recordId })
 
 export const optionInput = z.object({

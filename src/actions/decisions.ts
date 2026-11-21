@@ -94,7 +94,7 @@ const DECISION_NOT_FOUND = () => fail('Decision not found', ACTION_ERROR.decisio
  * Load a decision and check the caller belongs to its team. A missing
  * decision and one in another team answer identically.
  */
-async function loadDecisionForMember(
+export async function loadDecisionForMember(
   tools: ActionTools,
   decisionId: string,
   userId: string,
