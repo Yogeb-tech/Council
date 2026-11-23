@@ -11,6 +11,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { AuthOverlay, useAuthProfileReady, signOut } from 'deepspace'
+import { SIGN_IN_PROVIDERS } from '@/lib/auth-providers'
 import { ChevronDown, LogOut, Menu, X } from 'lucide-react'
 import { Wordmark } from './council/Logo'
 import type { Role } from '../constants'
@@ -159,7 +160,7 @@ export default function Navigation() {
         )}
       </nav>
 
-      {showAuthModal && <AuthOverlay onClose={() => setShowAuthModal(false)} />}
+      {showAuthModal && <AuthOverlay providers={[...SIGN_IN_PROVIDERS]} onClose={() => setShowAuthModal(false)} />}
     </>
   )
 }

@@ -114,7 +114,8 @@ Details, the grounding rules and the setup still needed are in
 
 ## Account deletion
 
-The DeepSpace sign-in (email/password, Google, GitHub) lives on DeepSpace's
+The DeepSpace sign-in (email/password or Google; GitHub sign-in is turned off in
+`src/lib/auth-providers.ts`) lives on DeepSpace's
 shared auth server and is used by every DeepSpace app. The SDK has no API for
 an app to delete it, and the auth server doesn't enable Better Auth's
 delete-user endpoint, so `deleteMyAccount` removes Council data only and the
