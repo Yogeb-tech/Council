@@ -30,6 +30,7 @@ import {
 } from 'deepspace/worker'
 import type { ExpoAuthBridgeOptions, JwtVerifierConfig, VerifyResult } from 'deepspace/worker'
 import { integrations } from '../integrations.js'
+import { isSignInProvider } from '../lib/auth-providers.js'
 import type { AppContext, Env } from '../../worker.js'
 
 function jwtConfig(env: Env): JwtVerifierConfig {
@@ -86,6 +87,8 @@ export function registerAuthAndIntegrationRoutes(app: Hono<AppContext>): void {
   app.get('/api/auth/social-redirect', (c) => {
     const provider = c.req.query('provider')
     if (!provider) return c.json({ error: 'Missing provider' }, 400)
+    // Only the providers the sign-in box offers (GitHub sign-in was removed).
+    if (!isSignInProvider(provider)) return c.json({ error: 'Sign-in provider not available' }, 400)
 
     const appOrigin = new URL(c.req.url).origin
     const authOrigin = new URL(c.env.AUTH_WORKER_URL).origin

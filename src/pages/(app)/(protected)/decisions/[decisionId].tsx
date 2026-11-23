@@ -2,9 +2,9 @@
  * Decision page: the decision, live vote tallies, for/against arguments per
  * option, and who else is viewing.
  *
- * Data flow: four live `useQuery` subscriptions (decision, options, votes,
- * arguments) scoped by the server's `'team'` rule, plus a PresenceRoom for
- * viewers. Writes go through server actions (castVote, retractVote,
+ * Data flow: live `useQuery` subscriptions (decision, options, votes,
+ * arguments, memo, memo deliveries) scoped by the server's `'team'` rule,
+ * plus a PresenceRoom for viewers. Writes go through server actions (castVote, retractVote,
  * addArgument, deleteArgument); the subscriptions then push the result to
  * every open copy of this page, including ours, so there's no local cache to
  * keep in sync.
@@ -17,6 +17,7 @@ import { ArrowLeft, Clock } from 'lucide-react'
 import { useToast } from '@/components/ui'
 import { DecisionStatusBadge } from '@/components/council/DecisionList'
 import { NotFoundPanel } from '@/components/council/NotFoundPanel'
+import { MemoPanel } from '@/components/council/MemoPanel'
 import { OptionCard } from '@/components/council/OptionCard'
 import { PresenceBar } from '@/components/council/PresenceBar'
 import { formatDeadline, isDecisionOpen, relativeTime } from '@/components/council/format'
@@ -24,8 +25,10 @@ import { allowsMultipleChoices, voteOptionIds } from '@/lib/decision-status'
 import {
   useDecision,
   useDecisionArguments,
+  useDecisionMemo,
   useDecisionOptions,
   useDecisionVotes,
+  useMemoDeliveries,
   useMyTeamRole,
   useTeam,
 } from '@/hooks/council'
@@ -43,6 +46,8 @@ export default function DecisionPage() {
   const { options, status: optionsStatus } = useDecisionOptions(decisionId)
   const { votes, status: votesStatus } = useDecisionVotes(decisionId)
   const { arguments: args } = useDecisionArguments(decisionId)
+  const { memo } = useDecisionMemo(decisionId)
+  const { deliveries } = useMemoDeliveries(decisionId)
   // '__none__' matches nothing until the decision (and so its teamId) loads.
   const teamId = decision?.data.teamId ?? '__none__'
   const { team } = useTeam(teamId)
@@ -184,6 +189,18 @@ export default function DecisionPage() {
           </p>
         )}
       </section>
+
+      <div className="mt-8">
+        <MemoPanel
+          decisionId={decisionId}
+          open={open}
+          memo={memo}
+          deliveries={deliveries}
+          voteCount={votes.length}
+          argumentCount={args.length}
+          now={now}
+        />
+      </div>
     </div>
   )
 }

@@ -19,6 +19,8 @@ interface Row {
 const UNIQUE: Record<string, string[]> = {
   team_members: ['teamId', 'userId'],
   votes: ['decisionId', 'userId'],
+  decision_memos: ['decisionId'],
+  memo_deliveries: ['decisionId', 'channel'],
 }
 
 export function createFakeTools(actingUserId: string, store = new Map<string, Map<string, Row>>()) {

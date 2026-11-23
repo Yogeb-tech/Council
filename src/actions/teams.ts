@@ -304,7 +304,15 @@ export async function drain(tools: ActionTools, collection: string, where: Recor
  * No permission check: callers must have checked the caller may do this.
  */
 export async function deleteTeamCascade(tools: ActionTools, teamId: string): Promise<void> {
-  for (const collection of ['arguments', 'votes', 'options', 'decisions', 'team_invites']) {
+  for (const collection of [
+    'memo_deliveries',
+    'decision_memos',
+    'arguments',
+    'votes',
+    'options',
+    'decisions',
+    'team_invites',
+  ]) {
     await drain(tools, collection, { teamId })
   }
   // Non-owner memberships, then the owner's, then the team itself.

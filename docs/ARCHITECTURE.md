@@ -1,4 +1,14 @@
-# Council — Architecture (Days 1–2)
+# Council — Architecture
+
+## Sign-in
+
+Council uses DeepSpace auth through the SDK's `<AuthOverlay>`. **Google is the
+main sign-in.** GitHub is turned off (`src/lib/auth-providers.ts`; the
+social-redirect route refuses other providers). The overlay's built-in
+email/password form still signs in accounts that already exist, but the SDK
+offers no email sign-up, and a custom sign-up form was tried and dropped
+because the platform's support for it couldn't be confirmed. New users sign
+up with Google.
 
 ## Data model
 
@@ -16,6 +26,12 @@ All Council collections live in the app's single RecordRoom scope
 | `options`      | teamId, decisionId, title, description, position                  | |
 | `votes`        | teamId, decisionId, optionId (first choice), optionIds (JSON list), userId | `uniqueOn: [decisionId, userId]`: one row per member per decision, holding their whole selection. |
 | `arguments`    | teamId, decisionId, optionId, userId, stance (`for`/`against`), content | Author, stance and option are immutable. |
+| `decision_memos` | teamId, decisionId, content, kind (`draft`/`final`), generatedBy, generatedAt, model, voteCount, argumentCount | `uniqueOn: [decisionId]`: one memo per decision, replaced on regenerate. |
+| `memo_deliveries` | teamId, decisionId, channel (`email`), status (`sending`/`sent`/`skipped`/`failed`), attempts, claimedAt, sentAt, detail | `uniqueOn: [decisionId, channel]`: creating the row claims the delivery. |
+
+`decisions` also has `closedAt`,
+`finalizeState` (`pending`/`done`) and `finalizeAttempts`, all written by the
+closing job. See [INTEGRATIONS.md](./INTEGRATIONS.md).
 
 Every row carries `teamId` (immutable), even child rows like options, so the
 same permission rule scopes every collection without joins.
@@ -47,7 +63,7 @@ Team roles: **owner** (creator; invites, removes anyone else, cannot leave),
 | Action          | Who                     | Does |
 |-----------------|-------------------------|------|
 | `createTeam`    | any signed-in user      | Creates the team and an `owner` membership (rolls back the team on failure). |
-| `deleteTeam`    | owner                   | Deletes the team and all its decisions, options, votes, arguments, invites and memberships. Re-runnable after a partial failure. |
+| `deleteTeam`    | owner                   | Deletes the team and all its decisions, options, votes, arguments, memos, deliveries, invites and memberships. Re-runnable after a partial failure. |
 | `deleteMyAccount` | the caller            | Deletes the caller's Council data (see "Account deletion"). |
 | `inviteMember`  | owner/admin             | Creates a pending invite for an email; idempotent; refuses existing members. |
 | `revokeInvite`  | owner/admin             | Marks a pending invite revoked. |
@@ -93,9 +109,22 @@ counter to drift.
 Votes are visible to the team (each option shows who voted for it). This is a
 team decision tool, not a secret ballot.
 
+## AI memo and closing job
+
+- `POST /api/decisions/:decisionId/memo` streams a draft memo for an open
+  decision to any team member and saves it to `decision_memos`. It replaced
+  the scaffold's generic chatbot; the model gets no tools, only the
+  decision's data.
+- CronRoom task `close-decisions` (`src/cron.ts` → `src/server/finalize.ts`)
+  closes due decisions, writes the final memo and emails it to the team,
+  idempotently.
+
+Details, the grounding rules and the setup still needed are in
+[INTEGRATIONS.md](./INTEGRATIONS.md).
+
 ## Account deletion
 
-The DeepSpace sign-in (email/password, Google, GitHub) lives on DeepSpace's
+The DeepSpace sign-in (Google, or an existing email/password account) lives on DeepSpace's
 shared auth server and is used by every DeepSpace app. The SDK has no API for
 an app to delete it, and the auth server doesn't enable Better Auth's
 delete-user endpoint, so `deleteMyAccount` removes Council data only and the
@@ -140,7 +169,7 @@ server-actions guide.
 - `/home` — dashboard: pending invites, team cards (open-decision counts), create team.
 - `/teams/:teamId` — decisions list, members, invite form, pending invites, leave team.
 - `/teams/:teamId/new-decision` — create-decision form.
-- `/decisions/:decisionId` — decision detail: live vote tallies, voting, for/against arguments per option, and who's viewing.
+- `/decisions/:decisionId` — decision detail: live vote tallies, voting, for/against arguments per option, who's viewing, and the AI memo with delivery status.
 
 All are under `src/pages/(app)/(protected)/`, so they require sign-in.
 

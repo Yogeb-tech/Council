@@ -16,7 +16,9 @@ import { ACTION } from '../lib/action-contract'
 import type {
   Argument,
   Decision,
+  DecisionMemo,
   DecisionOption,
+  MemoDelivery,
   Team,
   TeamInvite,
   TeamMember,
@@ -112,6 +114,18 @@ export function useDecisionArguments(decisionId: string) {
     orderDir: 'asc',
   })
   return { arguments: records, status }
+}
+
+/** The decision's AI memo (one row per decision), or null. Live. */
+export function useDecisionMemo(decisionId: string) {
+  const { records, status } = useQuery<DecisionMemo>('decision_memos', { where: { decisionId }, limit: 1 })
+  return { memo: records[0] ?? null, status }
+}
+
+/** Email delivery records for the decision's final memo. Live. */
+export function useMemoDeliveries(decisionId: string) {
+  const { records, status } = useQuery<MemoDelivery>('memo_deliveries', { where: { decisionId } })
+  return { deliveries: records, status }
 }
 
 /** Shape returned by the listMyInvites action. */

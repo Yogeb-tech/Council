@@ -16,6 +16,7 @@
 import { useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
 import { AuthGate, AuthOverlay } from 'deepspace'
+import { SIGN_IN_PROVIDERS } from '@/lib/auth-providers'
 import { Button } from '@/components/ui'
 
 export default function ProtectedLayout() {
@@ -47,7 +48,7 @@ function SignedOutPanel() {
         </Link>
       </div>
 
-      {showAuthModal && <AuthOverlay onClose={() => setShowAuthModal(false)} />}
+      {showAuthModal && <AuthOverlay providers={[...SIGN_IN_PROVIDERS]} onClose={() => setShowAuthModal(false)} />}
     </div>
   )
 }
