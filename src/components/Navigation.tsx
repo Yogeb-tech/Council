@@ -1,6 +1,6 @@
 /**
  * Top nav — minimal placeholder bar wired to the app's mechanisms:
- * nav.ts-driven links (with role/dev filtering), sign-in via <AuthOverlay>,
+ * nav.ts-driven links (with role/dev filtering), sign-in via <AuthOverlay> and sign-up via <SignUpModal>,
  * and sign-out. Restyle or rebuild it freely; keep the data-testid hooks
  * (`app-navigation`, `nav-sign-in-button`, `nav-user-name`, `nav-user-email`)
  * — the shipped tests rely on them. `nav-user-email` is the one that carries
@@ -10,8 +10,8 @@
 
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { AuthOverlay, useAuthProfileReady, signOut } from 'deepspace'
-import { SIGN_IN_PROVIDERS } from '@/lib/auth-providers'
+import { useAuthProfileReady, signOut } from 'deepspace'
+import { AuthDialogs, type AuthMode } from '@/components/SignUpModal'
 import { ChevronDown, LogOut, Menu, X } from 'lucide-react'
 import { Wordmark } from './council/Logo'
 import type { Role } from '../constants'
@@ -33,7 +33,7 @@ export default function Navigation() {
   const { isLoaded, isSignedIn, user, userLoading } = useAuthProfileReady({ requireUser: true })
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [showAuthModal, setShowAuthModal] = useState(false)
+  const [authMode, setAuthMode] = useState<AuthMode>(null)
 
   const profileReady = !isSignedIn || (!userLoading && !!user)
   const userRole = (user?.role ?? 'anonymous') as Role | 'anonymous'
@@ -134,13 +134,22 @@ export default function Navigation() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <button
-              data-testid="nav-sign-in-button"
-              onClick={() => setShowAuthModal(true)}
-              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
-            >
-              Sign in
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                data-testid="nav-sign-up-button"
+                onClick={() => setAuthMode('sign-up')}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                Sign up
+              </button>
+              <button
+                data-testid="nav-sign-in-button"
+                onClick={() => setAuthMode('sign-in')}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                Sign in
+              </button>
+            </div>
           )}
 
           <button
@@ -160,7 +169,7 @@ export default function Navigation() {
         )}
       </nav>
 
-      {showAuthModal && <AuthOverlay providers={[...SIGN_IN_PROVIDERS]} onClose={() => setShowAuthModal(false)} />}
+      <AuthDialogs mode={authMode} onChange={setAuthMode} />
     </>
   )
 }
