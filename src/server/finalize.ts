@@ -14,7 +14,7 @@
  *    unique in the schema. Creating it is the claim; `sent`/`skipped` rows
  *    are never sent again. `failed` rows are retried up to MAX_ATTEMPTS.
  *    A `sending` row older than STALE_CLAIM_MS (the run died mid-send) is
- *    retried, so a crash right after Gmail accepted a message can, rarely,
+ *    retried, so a crash right after the email service accepted a message can, rarely,
  *    send it twice. That at-least-once tradeoff is deliberate: the
  *    alternative is a memo that silently never arrives.
  *
@@ -22,7 +22,7 @@
  * integrations to the owner (APP_OWNER_JWT). Nothing here takes client input.
  */
 
-import { callComposio, loggableError } from 'deepspace/worker'
+import { loggableError } from 'deepspace/worker'
 import type { ActionTools } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import type {
@@ -45,9 +45,6 @@ export const MAX_MEMO_ATTEMPTS = 3
 /** A `sending` claim older than this is treated as a dead run. */
 export const STALE_CLAIM_MS = 10 * 60 * 1000
 
-/** Composio tool slug for Gmail, as named in the SDK's own examples. */
-export const GMAIL_SEND_SLUG = 'GMAIL_SEND_EMAIL'
-
 interface Row<T> {
   recordId: string
   data: T
@@ -65,7 +62,7 @@ export async function runClosingJob(env: Env, now = new Date()): Promise<CloseSu
   // The owner id is only the acting identity for createdBy; RBAC is off for
   // these tools. developer-billed integrations use APP_OWNER_JWT regardless.
   const tools = createActionTools(env, env.OWNER_USER_ID, env.APP_OWNER_JWT)
-  const deliver = makeDeliverers(env, tools)
+  const deliver = makeDeliverers(tools)
   return closeAndFinalize(tools, now, deliver, (facts) => generateMemoText(env, facts, 'final'), appUrl(env))
 }
 
@@ -78,7 +75,7 @@ export interface DeliveryInput {
   team: Team
   memo: string
   link: string
-  /** The member who created the decision (Gmail is sent from their account). */
+  /** The member who created the decision. */
   creatorId: string
 }
 export type DeliveryOutcome =
@@ -263,9 +260,9 @@ export async function deliverOnce(
 // Channels
 // ---------------------------------------------------------------------------
 
-function makeDeliverers(env: Env, tools: ActionTools): Record<DeliveryChannel, Deliverer> {
+function makeDeliverers(tools: ActionTools): Record<DeliveryChannel, Deliverer> {
   return {
-    email: (input) => sendEmail(env, tools, input),
+    email: (input) => sendEmail(tools, input),
   }
 }
 
@@ -303,26 +300,15 @@ export function emailBody(input: DeliveryInput): string {
 }
 
 /**
- * Email the final memo to every active team member, whatever their domain.
- *
- * Two senders, in order:
- *  1. Resend (transactional email API), when the app has the RESEND_API_KEY
- *     and EMAIL_FROM secrets. No per-user setup; sends from the app's own
- *     address.
- *  2. Otherwise Gmail through Composio, from the decision creator's own
- *     connected Gmail (`asUser` runs as them, billed to the app owner).
- *     No connection → skipped, not failed.
+ * Email the final memo to every active team member, whatever their domain,
+ * with DeepSpace's own email integration (`email/send`, billed to the app
+ * owner). It always sends from DeepSpace Apps
+ * <notifications@updates.app.space>, so nobody has to connect an account.
  */
-async function sendEmail(env: Env, tools: ActionTools, input: DeliveryInput): Promise<DeliveryOutcome> {
+async function sendEmail(tools: ActionTools, input: DeliveryInput): Promise<DeliveryOutcome> {
   const recipients = await teamEmails(tools, input.decision.teamId)
   if (recipients.length === 0) return { status: 'skipped', detail: 'No team member has an email address.' }
-  const message = { to: recipients, subject: emailSubject(input), text: emailBody(input) }
-
-  if (env.RESEND_API_KEY && env.EMAIL_FROM) {
-    return sendViaResend({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM }, message)
-  }
-  if (!input.creatorId) return { status: 'skipped', detail: 'Decision creator unknown.' }
-  return sendViaGmail(env, input.creatorId, message)
+  return sendViaDeepSpaceEmail(tools, { to: recipients, subject: emailSubject(input), text: emailBody(input) })
 }
 
 export interface EmailMessage {
@@ -335,43 +321,17 @@ export function emailSubject(input: DeliveryInput) {
   return `Decision closed: ${input.decision.title}`
 }
 
-/** Resend's documented send endpoint. One request; Resend allows up to 50 recipients. */
-export const RESEND_ENDPOINT = 'https://api.resend.com/emails'
+/** DeepSpace's transactional email endpoint (`npx deepspace integrations info email/send`). */
+export const EMAIL_SEND_ENDPOINT = 'email/send'
 
-export async function sendViaResend(
-  config: { apiKey: string; from: string },
-  message: EmailMessage,
-  fetchImpl: typeof fetch = fetch,
-): Promise<DeliveryOutcome> {
-  const res = await fetchImpl(RESEND_ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: config.from, to: message.to.slice(0, 50), subject: message.subject, text: message.text }),
-    signal: AbortSignal.timeout(30_000),
+export async function sendViaDeepSpaceEmail(tools: ActionTools, message: EmailMessage): Promise<DeliveryOutcome> {
+  const res = await tools.integration(EMAIL_SEND_ENDPOINT, {
+    to: message.to,
+    subject: message.subject,
+    text: message.text,
   })
-  if (res.ok) return { status: 'sent' }
-  // Resend answers { name, message } on errors; never echo the request (it holds the key).
-  const body = (await res.json().catch(() => null)) as { message?: unknown } | null
-  const reason = typeof body?.message === 'string' ? body.message : `HTTP ${res.status}`
-  return { status: 'failed', detail: `Email: ${reason}`.slice(0, 300) }
-}
-
-async function sendViaGmail(env: Env, creatorId: string, message: EmailMessage): Promise<DeliveryOutcome> {
-  const [to, ...rest] = message.to
-  const data = (await callComposio(
-    env,
-    'execute-tool',
-    {
-      slug: GMAIL_SEND_SLUG,
-      // Argument names follow Composio's GMAIL_SEND_EMAIL tool; unverified here.
-      arguments: { recipient_email: to, extra_recipients: rest, subject: message.subject, body: message.text, is_html: false },
-    },
-    { asUser: creatorId },
-  )) as { requiresConnection?: boolean } | null
-  if (data && typeof data === 'object' && data.requiresConnection) {
-    return { status: 'skipped', detail: 'No email sender is set up (no Resend key, and the creator has not connected Gmail).' }
-  }
-  return { status: 'sent' }
+  if (res.success) return { status: 'sent' }
+  return { status: 'failed', detail: `Email: ${res.error ?? 'send failed'}`.slice(0, 300) }
 }
 
 // ---------------------------------------------------------------------------

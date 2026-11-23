@@ -52,7 +52,7 @@ export function CreateTeamModal({ open, onClose }: { open: boolean; onClose: () 
               value={name}
               maxLength={LIMITS.teamName}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Leadership team"
+              placeholder="Platform team"
               autoFocus
             />
           </div>

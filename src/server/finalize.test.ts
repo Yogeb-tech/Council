@@ -3,7 +3,7 @@ import type { ActionHandler, ActionResult } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { actions } from '../actions/index'
 import { createFakeTools, seedUser } from '../actions/fake-tools.test-util'
-import { closeAndFinalize, emailBody, RESEND_ENDPOINT, sendViaResend, MAX_ATTEMPTS, MAX_MEMO_ATTEMPTS, STALE_CLAIM_MS, type DeliveryInput, type DeliveryOutcome } from './finalize'
+import { closeAndFinalize, emailBody, EMAIL_SEND_ENDPOINT, sendViaDeepSpaceEmail, MAX_ATTEMPTS, MAX_MEMO_ATTEMPTS, STALE_CLAIM_MS, type DeliveryInput, type DeliveryOutcome } from './finalize'
 
 type Store = ReturnType<typeof createFakeTools>['store']
 
@@ -100,10 +100,10 @@ describe('closing job', () => {
   it('retries a failed delivery on a later run', async () => {
     const { store, decisionId, afterDeadline } = await setup()
     let calls = 0
-    const h = harness(store, async () => (++calls === 1 ? { status: 'failed', detail: 'Gmail: timeout' } : { status: 'sent' }))
+    const h = harness(store, async () => (++calls === 1 ? { status: 'failed', detail: 'Email: timeout' } : { status: 'sent' }))
     const first = await h.go(afterDeadline)
     expect(first.pending).toBe(1)
-    expect(deliveryRows(store)).toMatchObject({ email: { status: 'failed', attempts: 1, detail: 'Gmail: timeout' } })
+    expect(deliveryRows(store)).toMatchObject({ email: { status: 'failed', attempts: 1, detail: 'Email: timeout' } })
     expect(decisionRow(store, decisionId).finalizeState).toBe('pending')
 
     await h.go(new Date(afterDeadline.getTime() + 2 * 60 * 1000))
@@ -123,16 +123,16 @@ describe('closing job', () => {
 
   it('gives up on a channel after MAX_ATTEMPTS failures and finishes the decision', async () => {
     const { store, decisionId, afterDeadline } = await setup()
-    const h = harness(store, async () => ({ status: 'failed', detail: 'Gmail: quota exceeded' }))
+    const h = harness(store, async () => ({ status: 'failed', detail: 'Email: quota exceeded' }))
     for (let i = 0; i < MAX_ATTEMPTS + 2; i++) await h.go(new Date(afterDeadline.getTime() + i * 60 * 1000))
     expect(h.email).toHaveBeenCalledTimes(MAX_ATTEMPTS)
-    expect(deliveryRows(store).email).toMatchObject({ status: 'failed', attempts: MAX_ATTEMPTS, detail: 'Gmail: quota exceeded' })
+    expect(deliveryRows(store).email).toMatchObject({ status: 'failed', attempts: MAX_ATTEMPTS, detail: 'Email: quota exceeded' })
     expect(decisionRow(store, decisionId).finalizeState).toBe('done')
   })
 
   it('records a skipped channel once and never retries it', async () => {
     const { store, decisionId, afterDeadline } = await setup()
-    const h = harness(store, async () => ({ status: 'skipped', detail: 'The decision creator has not connected Gmail.' }))
+    const h = harness(store, async () => ({ status: 'skipped', detail: 'No team member has an email address.' }))
     await h.go(afterDeadline)
     await h.go(new Date(afterDeadline.getTime() + 60 * 1000))
     expect(h.email).toHaveBeenCalledTimes(1)
@@ -212,28 +212,24 @@ describe('emailBody', () => {
   })
 })
 
-describe('sendViaResend', () => {
+describe('sendViaDeepSpaceEmail', () => {
   const message = { to: ['a@example.com', 'yogeb@mailer.me'], subject: 'Decision closed: DB', text: 'memo' }
 
-  it('posts one message to every recipient with the key as a bearer token', async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ id: 'e1' }), { status: 200 }))
-    const out = await sendViaResend({ apiKey: 're_test', from: 'Council <c@example.com>' }, message, fetchImpl as unknown as typeof fetch)
-    expect(out).toEqual({ status: 'sent' })
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe(RESEND_ENDPOINT)
-    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer re_test')
-    expect(JSON.parse(init.body as string)).toEqual({
-      from: 'Council <c@example.com>',
+  it('sends one email/send call to every recipient', async () => {
+    const { tools } = createFakeTools('owner', new Map())
+    const integration = vi.fn(async () => ({ success: true as const, data: {} }))
+    tools.integration = integration as unknown as typeof tools.integration
+    expect(await sendViaDeepSpaceEmail(tools, message)).toEqual({ status: 'sent' })
+    expect(integration).toHaveBeenCalledWith(EMAIL_SEND_ENDPOINT, {
       to: ['a@example.com', 'yogeb@mailer.me'],
       subject: 'Decision closed: DB',
       text: 'memo',
     })
   })
 
-  it('reports Resend’s error message as a failed attempt, without the key', async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ name: 'validation_error', message: 'Domain not verified' }), { status: 403 }))
-    const out = await sendViaResend({ apiKey: 're_secret', from: 'c@example.com' }, message, fetchImpl as unknown as typeof fetch)
-    expect(out).toEqual({ status: 'failed', detail: 'Email: Domain not verified' })
-    expect(JSON.stringify(out)).not.toContain('re_secret')
+  it('reports the service error as a failed attempt, so it is retried', async () => {
+    const { tools } = createFakeTools('owner', new Map())
+    tools.integration = (async () => ({ success: false, error: 'Insufficient credits' })) as unknown as typeof tools.integration
+    expect(await sendViaDeepSpaceEmail(tools, message)).toEqual({ status: 'failed', detail: 'Email: Insufficient credits' })
   })
 })

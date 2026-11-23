@@ -117,7 +117,7 @@ export default function NewDecisionPage() {
             value={title}
             maxLength={LIMITS.decisionTitle}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Should we open a second location this year?"
+            placeholder="Which database should we use for the prototype?"
             autoFocus
           />
         </div>
@@ -129,7 +129,7 @@ export default function NewDecisionPage() {
             value={description}
             maxLength={LIMITS.decisionDescription}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Budget, constraints, links, and what a good outcome looks like."
+            placeholder="Constraints, links, and what a good outcome looks like."
             rows={4}
           />
         </div>
@@ -159,7 +159,7 @@ export default function NewDecisionPage() {
                   value={option.title}
                   maxLength={LIMITS.optionTitle}
                   onChange={(e) => updateOption(option.key, { title: e.target.value })}
-                  placeholder={index === 0 ? 'Open in Q3' : index === 1 ? 'Wait until next year' : 'Another option'}
+                  placeholder={index === 0 ? 'Postgres' : index === 1 ? 'SQLite' : 'Another option'}
                 />
                 <Input
                   aria-label={`Option ${index + 1} details`}

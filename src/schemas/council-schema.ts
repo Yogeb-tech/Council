@@ -73,7 +73,7 @@ export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number]
 
 /**
  * sending = claimed by a closing-job run; sent = delivered; skipped = not
- * configured (no Gmail connection), never retried; failed =
+ * possible (no recipient email), never retried; failed =
  * retried on later runs until the attempt cap.
  */
 export const DELIVERY_STATUSES = ['sending', 'sent', 'skipped', 'failed'] as const

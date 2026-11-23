@@ -6,7 +6,7 @@
 |---|---|---|
 | AI decision memo (streamed draft) | `src/server/memo-routes.ts`, `src/server/memo.ts`, `src/components/council/MemoPanel.tsx` | Built, unit-tested (prompt + facts). Not yet run against the live AI proxy. |
 | Closing job (close voting, final memo, email) | `src/cron.ts`, `src/server/finalize.ts` | Built, unit-tested with fakes. Not yet run on a deployed CronRoom. |
-| Email delivery (Resend, or Gmail via Composio) | `sendEmail` in `src/server/finalize.ts` | Built, Resend request unit-tested; **needs a Resend key or a Gmail connection** (below). |
+| Email delivery (DeepSpace `email/send`) | `sendEmail` in `src/server/finalize.ts` | Built, request unit-tested. Not yet sent from a deployed app. |
 
 Slack delivery was left out on purpose (no Slack workspace to test with).
 Adding it later means one more entry in `DELIVERY_CHANNELS`
@@ -53,7 +53,7 @@ Idempotency: `memo_deliveries` has one row per (decision, channel), unique in
 the schema, so creating it is a claim. `sent` and `skipped` are never retried;
 `failed` is retried up to 3 attempts; a `sending` claim older than 10 minutes
 is treated as a crashed run and retried. That last case means a crash right
-after Gmail accepted a message can send it twice: we chose at-least-once over
+after the email service accepted a message can send it twice: we chose at-least-once over
 a memo that silently never arrives.
 
 Voting itself already stops at the deadline (actions and UI check it), so the
@@ -63,36 +63,24 @@ trigger the task with the SDK's `useCronMonitor` hook (no UI for it yet).
 Note: decisions created before this change whose deadline has already passed
 will be closed and finalized on the first run after deploy.
 
-## Setup needed (not done yet)
-
-I could not reach docs.deep.space or the live integration catalog from the
-build environment, so the Gmail call is written from the SDK's own type docs
-(`callComposio`, the `GMAIL_SEND_EMAIL` slug), not from the catalog.
+## Setup needed
 
 ### Email
 
 Final memos go to every active team member's sign-in address, on any domain
-(nothing in Council restricts domains). Two senders, tried in this order:
+(nothing in Council restricts domains), through DeepSpace's own transactional
+email integration, `email/send` (`tools.integration('email/send', { to,
+subject, text })`). Its input schema was confirmed with
+`npx deepspace integrations info email/send`.
 
-1. **Resend** (recommended, no per-user setup). Set two app secrets:
-   ```sh
-   npx deepspace secrets set RESEND_API_KEY=re_...
-   npx deepspace secrets set EMAIL_FROM="Council <council@yourdomain.com>"
-   ```
-   Resend only delivers to arbitrary recipients from a **domain you have
-   verified in Resend** (DNS records). Without one, its test sender
-   `onboarding@resend.dev` only delivers to the email of your own Resend
-   account, which is enough for a demo to yourself. Resend's error message
-   (e.g. "domain not verified") shows on the decision page and the send is
-   retried up to 3 times.
-2. **Gmail via Composio** (used only when the Resend secrets are absent):
-   `callComposio(env, 'execute-tool', …, { asUser: <decision creator> })`,
-   sent from the creator's own Gmail. The creator must have connected Gmail
-   through Composio; there is no "Connect Gmail" button in the app yet.
-   Argument names (`recipient_email`, `extra_recipients`, `subject`, `body`,
-   `is_html`) are unverified here.
-
-If neither is available the email is recorded as `skipped`.
+- It always sends from **DeepSpace Apps <notifications@updates.app.space>**;
+  any `from` is ignored. Nobody has to connect an account or set a secret.
+- It is billed to the app owner ($0.013 per email, one email per closed
+  decision), because `email` uses the default developer billing in
+  `src/integrations.ts`.
+- A failed send (for example, the owner is out of credits) is recorded as
+  `failed` with the service's message, shown on the decision page, and
+  retried up to 3 times.
 
 ### Optional
 

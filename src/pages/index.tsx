@@ -13,38 +13,38 @@ import { seo } from '../seo'
 const steps = [
   {
     icon: Users,
-    title: 'Frame the decision',
-    body: 'Put the question to the people who own it, list the options, and set when the call gets made.',
+    title: 'Open a decision',
+    body: 'Frame the question for your team, list the options, and set when voting closes.',
   },
   {
     icon: MessagesSquare,
-    title: 'Hear every side',
-    body: 'Stakeholders vote and make the case for and against each option on their own time, and everyone sees it live.'
+    title: 'Argue it out, async',
+    body: 'Teammates vote and leave arguments for and against each option, and everyone sees it live.',
   },
   {
     icon: Sparkles,
-    title: 'Get the decision memo',
-    body: 'At the deadline, voting closes and an AI memo lays out the tradeoffs, the outcome and next steps, emailed to the team.',
+    title: 'Get the memo',
+    body: 'When the deadline hits, voting closes and an AI memo sums up the tradeoffs and the call.',
   },
 ]
 
 /** Static illustration of a decision in progress. Fixed numbers, no live data. */
 function DecisionPreview() {
   const options = [
-    { name: 'Open in Q3', votes: 4, pct: 57, lead: true },
-    { name: 'Wait until next year', votes: 2, pct: 29 },
-    { name: 'Grow online sales instead', votes: 1, pct: 14 },
+    { name: 'Postgres', votes: 4, pct: 57, lead: true },
+    { name: 'SQLite', votes: 2, pct: 29 },
+    { name: 'DynamoDB', votes: 1, pct: 14 },
   ]
   return (
     <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-[0_24px_60px_-24px_rgba(48,38,20,0.35)]">
       <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-        <span className="font-medium uppercase tracking-wider">Leadership team</span>
+        <span className="font-medium uppercase tracking-wider">Platform team</span>
         <span className="inline-flex items-center gap-1">
           <Clock className="size-3.5" aria-hidden /> Closes Friday, 5 PM
         </span>
       </div>
       <p className="font-display text-xl font-semibold leading-snug text-foreground">
-        Should we open a second location this year?
+        Which database should we use for the prototype?
       </p>
       <ul className="mt-4 space-y-2.5">
         {options.map((o) => (
@@ -63,8 +63,8 @@ function DecisionPreview() {
         ))}
       </ul>
       <div className="mt-4 rounded-xl bg-muted/70 p-3 text-sm">
-        <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-primary">For Open in Q3</p>
-        <p className="text-foreground/80">“The landlord’s offer expires in June, and our current store is at capacity on weekends.”</p>
+        <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-primary">For Postgres</p>
+        <p className="text-foreground/80">“We already run it in prod, so there’s nothing new to learn or operate.”</p>
       </div>
     </div>
   )
@@ -85,17 +85,17 @@ export default function Landing() {
         <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 py-12 lg:grid-cols-[1.1fr_1fr] lg:py-20">
           <section>
             <p className="mb-4 text-sm font-medium uppercase tracking-widest text-primary">
-              Async decisions for the calls that matter
+              Async decisions for small teams
             </p>
             <h1 className="font-display text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-              Make the big calls
+              Make the call
               <br />
               without the meeting.
             </h1>
             <p className="mt-6 max-w-lg text-lg text-muted-foreground">
-              Hiring, budgets, pricing, expansion: Council gives every important business decision a
-              room. The options, the votes and the case for and against each, in one place and updated
-              live. When time’s up, you get a clear decision memo and a record of how the call was made.
+              Council gives every decision a room: the options, the votes, and the arguments for and
+              against, all in one place and updated live. When time’s up, you get a memo instead of
+              another call.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
