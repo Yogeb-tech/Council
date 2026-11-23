@@ -30,7 +30,7 @@ Do not prioritize feature count over reliability.
 - Inspect official examples where relevant.
 - Never invent SDK methods, properties, or configuration.
 - Prefer native DeepSpace capabilities over unnecessary custom implementations.
-- Always stick to what DeepSpace provides. Do not add third-party services or APIs outside the SDK and its integrations (for example, email goes through DeepSpace's Composio Gmail integration, not a separate email provider).
+- Always stick to what DeepSpace provides. Do not add third-party services or APIs outside the SDK and its integrations (for example, email goes through DeepSpace's own `email/send` integration, not a separate email provider).
 - Document any uncertainty about SDK behavior.
 
 ### Architecture
