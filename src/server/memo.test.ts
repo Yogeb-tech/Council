@@ -103,3 +103,22 @@ describe('buildMemoPrompt', () => {
     expect(prompt.match(/<\/argument>/g)).toHaveLength(1)
   })
 })
+
+describe('hidden results', () => {
+  const hidden: Decision = { ...decision, hideResults: 1 }
+
+  it('drafts for an open hidden-results decision say nothing about votes', () => {
+    const facts = buildMemoFacts({ decision: hidden, options, votes: [], args: [arg('bob', 'o1', 'for', 'Fast')], teamSize: 2, names })
+    expect(facts.votesHidden).toBe(true)
+    const prompt = buildMemoPrompt(facts, 'draft')
+    expect(prompt).toContain('Votes: HIDDEN until the deadline')
+    expect(prompt).not.toMatch(/Leading option|Members who voted|Votes: \d/)
+    expect(buildFallbackMemo(facts, 'empty')).toContain('Votes are hidden until voting closes.')
+  })
+
+  it('the final memo after the deadline counts the revealed votes as usual', () => {
+    const facts = buildMemoFacts({ decision: { ...hidden, status: 'closed' }, options, votes: [vote('alice', 'o1')], args: [], teamSize: 2, names })
+    expect(facts.votesHidden).toBe(false)
+    expect(buildMemoPrompt(facts, 'final')).toContain('Votes: 1 (Alice)')
+  })
+})

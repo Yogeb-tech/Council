@@ -10,7 +10,7 @@
 
 import { useState, type SubmitEvent } from 'react'
 import type { RecordData } from 'deepspace'
-import { Check, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
+import { Check, EyeOff, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react'
 import { Button, Label, Textarea, cn, useToast } from '@/components/ui'
 import { callAction } from '@/lib/actions'
 import { ACTION } from '@/lib/action-contract'
@@ -30,6 +30,8 @@ interface Props {
   args: RecordData<Argument>[]
   isMyVote: boolean
   isLeading: boolean
+  /** Hidden-results decision before its votes are revealed: show no tally. */
+  resultsHidden: boolean
   open: boolean
   myUserId: string
   myRole: TeamRole | null
@@ -49,6 +51,7 @@ export function OptionCard({
   args,
   isMyVote,
   isLeading,
+  resultsHidden,
   open,
   myUserId,
   myRole,
@@ -113,37 +116,43 @@ export function OptionCard({
       </div>
 
       {/* Tally */}
-      <div className="mt-3 space-y-1.5">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span data-testid="vote-count">
-            {count} vote{count === 1 ? '' : 's'}
-            {isLeading && count > 0 && <span className="ml-2 font-medium text-primary">Leading</span>}
-          </span>
-          <span>{pct}%</span>
-        </div>
-        <div
-          className="h-1.5 overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          aria-valuenow={pct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`${option.data.title}: backed by ${pct}% of voters`}
-        >
-          <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
-        </div>
-        {count > 0 && (
-          <div className="flex items-center gap-2 pt-1">
-            <div className="flex -space-x-2">
-              {votes.slice(0, 8).map((v) => (
-                <UserAvatar key={v.recordId} userId={v.data.userId} className="size-6" />
-              ))}
-            </div>
-            <span className="truncate text-xs text-muted-foreground">
-              {votes.map((v) => (v.data.userId === myUserId ? 'You' : nameOf(v.data.userId))).join(', ')}
+      {resultsHidden ? (
+        <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="results-hidden">
+          <EyeOff className="size-3.5" aria-hidden /> Results hidden until voting closes
+        </p>
+      ) : (
+        <div className="mt-3 space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span data-testid="vote-count">
+              {count} vote{count === 1 ? '' : 's'}
+              {isLeading && count > 0 && <span className="ml-2 font-medium text-primary">Leading</span>}
             </span>
+            <span>{pct}%</span>
           </div>
-        )}
-      </div>
+          <div
+            className="h-1.5 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuenow={pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`${option.data.title}: backed by ${pct}% of voters`}
+          >
+            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+          </div>
+          {count > 0 && (
+            <div className="flex items-center gap-2 pt-1">
+              <div className="flex -space-x-2">
+                {votes.slice(0, 8).map((v) => (
+                  <UserAvatar key={v.recordId} userId={v.data.userId} className="size-6" />
+                ))}
+              </div>
+              <span className="truncate text-xs text-muted-foreground">
+                {votes.map((v) => (v.data.userId === myUserId ? 'You' : nameOf(v.data.userId))).join(', ')}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Arguments */}
       <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">

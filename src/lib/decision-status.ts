@@ -19,6 +19,19 @@ export function allowsMultipleChoices(decision: { allowMultiple?: boolean | numb
 }
 
 /**
+ * Whether the decision keeps votes sealed until the deadline. Rows from
+ * before the setting existed have no value and show results live.
+ */
+export function hidesResults(decision: { hideResults?: boolean | number | null }) {
+  return decision.hideResults === true || decision.hideResults === 1
+}
+
+/** Where a decision's votes live while it is open. */
+export function voteCollection(decision: { hideResults?: boolean | number | null }) {
+  return hidesResults(decision) ? 'sealed_votes' : 'votes'
+}
+
+/**
  * The options a vote backs. Votes written before multi-choice existed only
  * have `optionId`, so fall back to it.
  */

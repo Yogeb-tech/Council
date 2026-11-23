@@ -71,6 +71,7 @@ export const deleteMyAccount: ActionHandler<Env> = async ({ userId, tools }) => 
     // 2. Everything I wrote, then my memberships, then invites to my email.
     await drain(tools, 'arguments', { userId })
     await drain(tools, 'votes', { userId })
+    await drain(tools, 'sealed_votes', { userId })
     await drain(tools, 'team_members', { userId })
     const email = await getCallerEmail(tools, userId)
     if (email) await drain(tools, 'team_invites', { email })

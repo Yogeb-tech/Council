@@ -309,6 +309,7 @@ export async function deleteTeamCascade(tools: ActionTools, teamId: string): Pro
     'decision_memos',
     'arguments',
     'votes',
+    'sealed_votes',
     'options',
     'decisions',
     'team_invites',

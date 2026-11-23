@@ -8,7 +8,7 @@ describe('council schemas', () => {
     expect(lintSchemas(schemas)).toEqual([])
   })
 
-  it.each(councilSchemas.map((s) => [s.name, s] as const))(
+  it.each(councilSchemas.filter((s) => s.name !== 'sealed_votes').map((s) => [s.name, s] as const))(
     '%s is team-scoped and read-only for every client role',
     (_name, schema) => {
       expect(schema.teamField).toBe('teamId')
@@ -19,4 +19,13 @@ describe('council schemas', () => {
       expect(schema.permissions['*']).toBeDefined()
     },
   )
+
+  it('sealed_votes: each member reads only their own vote, and nobody writes directly', () => {
+    const schema = councilSchemas.find((s) => s.name === 'sealed_votes')!
+    expect(schema.ownerField).toBe('userId')
+    expect(schema.permissions['*']).toBeDefined()
+    for (const perms of Object.values(schema.permissions)) {
+      expect(perms).toEqual({ read: 'own', create: false, update: false, delete: false })
+    }
+  })
 })

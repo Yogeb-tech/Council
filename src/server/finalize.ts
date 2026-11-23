@@ -2,7 +2,9 @@
  * The closing job, run by CronRoom (src/cron.ts) every few minutes:
  *
  *  1. Close: every `open` decision whose deadline has passed becomes
- *     `closed`, with `closedAt` and `finalizeState: 'pending'`.
+ *     `closed`, with `closedAt` and `finalizeState: 'pending'`. A
+ *     hidden-results decision then has its sealed votes revealed: copied
+ *     from `sealed_votes` into `votes`, where the whole team can read them.
  *  2. Finalize: for each `pending` decision (a few per run), write the final
  *     AI memo, then email it to the team, then mark it `done`.
  *
@@ -31,8 +33,11 @@ import type {
   MemoDelivery,
   Team,
   TeamMember,
+  Vote,
 } from '../schemas/council-schema'
 import { DELIVERY_CHANNELS } from '../schemas/council-schema'
+import { hidesResults } from '../lib/decision-status'
+import { escapeHtml, memoToHtml, memoToPlainText } from './memo-email'
 import { createActionTools } from './action-routes'
 import { buildFallbackMemo, generateMemoText, getMemo, isEmptyDiscussion, loadMemoFacts, MEMO_MODEL_ID, saveMemo } from './memo'
 
@@ -122,10 +127,50 @@ export async function closeDueDecisions(tools: ActionTools, now: Date): Promise<
       closedAt: now.toISOString(),
       finalizeState: 'pending',
     })
-    if (res.success) closed++
-    else console.error(`[closing-job] close ${row.recordId} failed: ${res.error}`)
+    if (!res.success) {
+      console.error(`[closing-job] close ${row.recordId} failed: ${res.error}`)
+      continue
+    }
+    closed++
+    if (hidesResults(row.data)) {
+      try {
+        await revealSealedVotes(tools, row.recordId)
+      } catch (err) {
+        // finalizeDecision reveals again before writing the memo.
+        console.error(`[closing-job] reveal ${row.recordId} failed: ${loggableError(err)}`)
+      }
+    }
   }
   return closed
+}
+
+/**
+ * Move a closed decision's sealed votes into `votes`. Safe to re-run: a
+ * vote already copied (uniqueOn decisionId+userId) is overwritten with the
+ * same selection, and each sealed row is deleted only after its copy is
+ * saved. Throws if anything is left, so the memo never counts half the votes.
+ */
+export async function revealSealedVotes(tools: ActionTools, decisionId: string): Promise<number> {
+  const sealed = await query<Vote>(tools, 'sealed_votes', { decisionId }, 500)
+  for (const row of sealed) {
+    const vote: Vote = {
+      teamId: row.data.teamId,
+      decisionId,
+      userId: row.data.userId,
+      optionId: row.data.optionId,
+      optionIds: row.data.optionIds,
+    }
+    const created = await tools.create('votes', { ...vote })
+    if (!created.success) {
+      const existing = (await query<Vote>(tools, 'votes', { decisionId, userId: vote.userId }, 1))[0]
+      if (!existing) throw new Error(`reveal vote failed: ${created.error}`)
+      const updated = await tools.update('votes', existing.recordId, { optionId: vote.optionId, optionIds: vote.optionIds })
+      if (!updated.success) throw new Error(`reveal vote failed: ${updated.error}`)
+    }
+    const removed = await tools.remove('sealed_votes', row.recordId)
+    if (!removed.success) throw new Error(`sealed vote cleanup failed: ${removed.error}`)
+  }
+  return sealed.length
 }
 
 /** Step 2 for one decision. Returns true once nothing is left to do for it. */
@@ -146,6 +191,9 @@ async function finalizeDecision(
     return true
   }
   const team = teamRes.data.record.data as unknown as Team
+
+  // Votes must be revealed before the final memo counts them.
+  if (hidesResults(decision)) await revealSealedVotes(tools, decisionId)
 
   // 2a. Final memo (once).
   let memo = await getMemo(tools, decisionId)
@@ -287,15 +335,29 @@ async function teamEmails(tools: ActionTools, teamId: string): Promise<string[]>
   return [...new Set(emails.filter((e): e is string => !!e))]
 }
 
+/** Plain-text email body, for email apps that don't show HTML. */
 export function emailBody(input: DeliveryInput): string {
   return [
     `Voting on "${input.decision.title}" in ${input.team.name} has closed.`,
     '',
-    input.memo,
+    memoToPlainText(input.memo),
     '',
     `Open the decision in Council: ${input.link}`,
     '',
     'This memo was written by AI from the team’s votes and arguments.',
+  ].join('\n')
+}
+
+/** HTML email body: the same content with real headings, bullets and bold. */
+export function emailHtml(input: DeliveryInput): string {
+  const link = escapeHtml(input.link)
+  return [
+    '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#2b2520;max-width:640px">',
+    `<p style="margin:0 0 16px;color:#5c544b">Voting on <strong>${escapeHtml(input.decision.title)}</strong> in ${escapeHtml(input.team.name)} has closed.</p>`,
+    memoToHtml(input.memo),
+    `<p style="margin:24px 0 8px"><a href="${link}" style="color:#9a5b13;font-weight:600">Open the decision in Council</a></p>`,
+    '<p style="margin:0;font-size:12px;color:#8a8178">This memo was written by AI from the team’s votes and arguments.</p>',
+    '</div>',
   ].join('\n')
 }
 
@@ -308,13 +370,20 @@ export function emailBody(input: DeliveryInput): string {
 async function sendEmail(tools: ActionTools, input: DeliveryInput): Promise<DeliveryOutcome> {
   const recipients = await teamEmails(tools, input.decision.teamId)
   if (recipients.length === 0) return { status: 'skipped', detail: 'No team member has an email address.' }
-  return sendViaDeepSpaceEmail(tools, { to: recipients, subject: emailSubject(input), text: emailBody(input) })
+  return sendViaDeepSpaceEmail(tools, {
+    to: recipients,
+    subject: emailSubject(input),
+    text: emailBody(input),
+    html: emailHtml(input),
+  })
 }
 
 export interface EmailMessage {
   to: string[]
   subject: string
   text: string
+  /** Optional HTML version; email apps that render HTML show it instead of `text`. */
+  html?: string
 }
 
 export function emailSubject(input: DeliveryInput) {
@@ -329,6 +398,7 @@ export async function sendViaDeepSpaceEmail(tools: ActionTools, message: EmailMe
     to: message.to,
     subject: message.subject,
     text: message.text,
+    ...(message.html ? { html: message.html } : {}),
   })
   if (res.success) return { status: 'sent' }
   return { status: 'failed', detail: `Email: ${res.error ?? 'send failed'}`.slice(0, 300) }

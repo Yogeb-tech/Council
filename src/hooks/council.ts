@@ -106,6 +106,16 @@ export function useDecisionVotes(decisionId: string) {
   return { votes: records, status }
 }
 
+/**
+ * My own sealed vote on a hidden-results decision, while voting is open.
+ * The server's `read: 'own'` rule on `sealed_votes` only ever sends the
+ * caller's row, so this can't see anyone else's vote.
+ */
+export function useMySealedVote(decisionId: string) {
+  const { records, status } = useQuery<Vote>('sealed_votes', { where: { decisionId }, limit: 1 })
+  return { vote: records[0] ?? null, status }
+}
+
 /** Every argument on a decision, oldest first so threads read top-down. Live. */
 export function useDecisionArguments(decisionId: string) {
   const { records, status } = useQuery<Argument>('arguments', {
