@@ -8,7 +8,7 @@
  */
 
 import type { Context, Hono } from 'hono'
-import { authenticatedRoomRequest, resolveAppRole, verifyJwt } from 'deepspace/worker'
+import { authenticatedRoomRequest, RECORD_NOT_FOUND, resolveAppRole, verifyJwt } from 'deepspace/worker'
 import type { JwtVerifierConfig, VerifyResult } from 'deepspace/worker'
 import type { AppContext, Env } from '../../worker.js'
 
@@ -100,6 +100,59 @@ async function getDocumentForAccess(env: Env, docId: string): Promise<DocumentAc
   }
 }
 
+/** Presence scope for a decision page; the client uses the same prefix. */
+const DECISION_SCOPE_PREFIX = 'decision:'
+
+/** Run one records tool in the app's RecordRoom with RBAC off, as `userId`. */
+async function recordTool(
+  env: Env,
+  userId: string,
+  tool: string,
+  params: Record<string, unknown>,
+): Promise<{ success?: boolean; error?: string; data?: Record<string, unknown> }> {
+  const stub = env.RECORD_ROOMS.get(env.RECORD_ROOMS.idFromName(`app:${env.DEEPSPACE_APP_ID}`))
+  const res = await stub.fetch(
+    new Request('https://internal/api/tools/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': userId, 'X-App-Action': 'true' },
+      body: JSON.stringify({ tool, params }),
+    }),
+  )
+  return (await res.json()) as { success?: boolean; error?: string; data?: Record<string, unknown> }
+}
+
+/**
+ * May `userId` see who is viewing this decision? Yes only if they are an
+ * active member of the decision's team (the same rule the server actions use
+ * in src/actions/authz.ts). The decision's team comes from the stored record.
+ */
+async function canViewDecision(
+  env: Env,
+  decisionId: string,
+  userId: string,
+): Promise<'allowed' | 'denied' | 'error'> {
+  try {
+    const found = await recordTool(env, userId, 'records.get', { collection: 'decisions', recordId: decisionId })
+    const record = found.data?.record as { data?: { teamId?: unknown } } | undefined
+    const teamId = record?.data?.teamId
+    if (!found.success || typeof teamId !== 'string') {
+      return found.error === RECORD_NOT_FOUND || found.success ? 'denied' : 'error'
+    }
+    const members = await recordTool(env, userId, 'records.query', {
+      collection: 'team_members',
+      where: { teamId, userId },
+      limit: 1,
+    })
+    if (!members.success) return 'error'
+    const rows = (members.data?.records ?? []) as Array<{ data?: { status?: unknown } }>
+    const status = rows[0]?.data?.status
+    if (!rows[0] || (status && status !== 'active')) return 'denied'
+    return 'allowed'
+  } catch {
+    return 'error'
+  }
+}
+
 async function resolveDocsYjsRole(
   env: Env,
   docId: string,
@@ -150,10 +203,29 @@ export function registerRealtimeRoutes(app: Hono<AppContext>): void {
     ),
   )
 
-  app.get(
-    '/ws/presence/:scopeId',
-    wsRoute((env) => env.PRESENCE_ROOMS),
-  )
+  // Presence is gated here, not in the PresenceRoom: the room trusts whoever
+  // the route lets in, and peers see each other's names. Council only uses
+  // `decision:<decisionId>` scopes, so anything else is refused, and a
+  // decision scope admits only signed-in members of the decision's team.
+  app.get('/ws/presence/:scopeId', async (c) => {
+    const scopeId = c.req.param('scopeId')
+    const decisionId = scopeId.startsWith(DECISION_SCOPE_PREFIX)
+      ? scopeId.slice(DECISION_SCOPE_PREFIX.length)
+      : ''
+    if (!decisionId) return new Response('Not found', { status: 404 })
+
+    const token = new URL(c.req.url).searchParams.get('token')
+    const auth = token ? (await verifyJwt(jwtConfig(c.env), token)).result : null
+    if (!auth) return new Response('Unauthorized', { status: 401 })
+
+    const access = await canViewDecision(c.env, decisionId, auth.userId)
+    if (access === 'error') return new Response('Service unavailable', { status: 503 })
+    // Same answer for "no such decision" and "not your team".
+    if (access === 'denied') return new Response('Not found', { status: 404 })
+
+    const stub = c.env.PRESENCE_ROOMS.get(c.env.PRESENCE_ROOMS.idFromName(scopeId))
+    return stub.fetch(authenticatedRoomRequest(c.req.raw, auth))
+  })
 
   app.get(
     '/ws/cron/:roomId',

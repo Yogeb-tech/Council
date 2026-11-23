@@ -19,13 +19,13 @@ import {
   YjsRoom,
 } from 'deepspace/worker'
 import type { DOBindings, DOManifest, Job, JobContext } from 'deepspace/worker'
-import { AI_CHATS_SCHEMA } from 'deepspace/schema'
 import { registerAgent } from './src/ai/agent.js'
 import { buildTools } from './src/ai/tools.js'
 import { tasks as cronTasks, runTask as runCronTask } from './src/cron.js'
 import { runJob } from './src/jobs.js'
 import { schemas } from './src/schemas.js'
 import { registerActionRoutes } from './src/server/action-routes.js'
+import { registerMemoRoutes } from './src/server/memo-routes.js'
 import {
   registerAuthAndIntegrationRoutes,
   registerPlatformProxyRoutes,
@@ -118,6 +118,11 @@ export interface Env extends DOBindings<typeof __DO_MANIFEST__> {
    * an authenticated app owner/admin. deepspace dev/test set it locally.
    */
   ALLOW_DEBUG_ROUTES?: string
+  /**
+   * Optional public origin used for links in memo emails (for example
+   * a custom domain). Defaults to https://<APP_NAME>.app.space.
+   */
+  APP_PUBLIC_URL?: string
 }
 
 export type AppContext = { Bindings: Env }
@@ -137,12 +142,10 @@ app.use('*', async (c, next) => {
 registerAuthAndIntegrationRoutes(app)
 registerRealtimeRoutes(app)
 registerActionRoutes(app, resolveAuth)
-// Every scaffold exposes selected tools through HTTP, MCP and browser tools.
-// Only copilot owns the collections needed for the in-app chat UI.
-registerAgent(app, {
-  tools: buildTools,
-  inApp: schemas.some((schema) => schema.name === AI_CHATS_SCHEMA.name),
-})
+// The AI in Council is the decision-memo summarizer, not a chatbot.
+registerMemoRoutes(app, resolveAuth)
+// Local assistant tools (HTTP, MCP and browser) stay as scaffolded.
+registerAgent(app, { tools: buildTools })
 registerPlatformProxyRoutes(app)
 registerStaticRoutes(app)
 

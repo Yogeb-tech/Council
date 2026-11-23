@@ -1,17 +1,14 @@
 /**
- * One coordinator for the generated app's two assistant surfaces:
+ * Registers the local assistant surface: the user's Codex, Claude, or similar
+ * client reaching this app's tools through the CLI bridge.
  *
- * - the in-app assistant is the website AI chat UI;
- * - the local assistant is the user's Codex, Claude, or similar client.
- *
- * The CLI only bridges a local assistant to these Worker routes. It does not
- * authorize or host either assistant.
+ * The scaffold's generic in-app chatbot was removed; Council's in-app AI is
+ * the decision-memo summarizer (src/server/memo-routes.ts).
  */
 
 import type { Hono } from 'hono'
 import { registerAgentToolRoutes, resolveAppMembership } from 'deepspace/worker'
 import type { AgentToolAccessResult, AgentToolRouteOptions, JwtClaims } from 'deepspace/worker'
-import { registerAiChatRoutes } from './chat-routes.js'
 import { resolveAgentAuth, resolveAuth } from '../server/http-routes.js'
 import type { AppContext, Env } from '../../worker.js'
 
@@ -34,8 +31,6 @@ export interface AgentAuthorizationContext {
 export interface RegisterAgentOptions {
   /** The existing app-owned tool factory from src/ai/tools.ts. */
   tools: ToolFactory
-  /** Enable the website AI chat UI. Defaults to true. */
-  inApp?: boolean
   /** Enable the user's local Codex/Claude/etc. assistant. Defaults to true. */
   local?: boolean
   /**
@@ -86,13 +81,9 @@ function createAccessResolver(options: RegisterAgentOptions, resolveIdentity: ty
 }
 
 /**
- * Register generated app assistant routes with one authorization policy for
- * both the website AI and the local assistant. The CLI is only their bridge.
+ * Register the local assistant routes. The CLI is only their bridge.
  */
 export function registerAgent(app: Hono<AppContext>, options: RegisterAgentOptions): void {
-  if (options.inApp !== false) {
-    registerAiChatRoutes(app, createAccessResolver(options, resolveAuth), options.tools)
-  }
   if (options.local !== false) {
     registerAgentToolRoutes(app, {
       buildTools: options.tools,
