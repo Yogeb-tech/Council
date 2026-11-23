@@ -13,18 +13,18 @@ import { seo } from '../seo'
 const steps = [
   {
     icon: Users,
-    title: 'Frame the decision',
-    body: 'Put the question to the people who own it, list the options, and set when the call gets made.',
+    title: 'Ask the question',
+    body: 'Write down what you’re deciding, add the options, and pick a deadline. Share one link to bring everyone in.',
   },
   {
     icon: MessagesSquare,
-    title: 'Hear every side',
-    body: 'Stakeholders vote and make the case for and against each option on their own time, and everyone sees it live.'
+    title: 'Let everyone weigh in',
+    body: 'People vote and say what they love or worry about, whenever suits them. Quiet voices count as much as loud ones.'
   },
   {
     icon: Sparkles,
-    title: 'Get the decision memo',
-    body: 'At the deadline, voting closes and an AI memo lays out the tradeoffs, the outcome and next steps, emailed to the team.',
+    title: 'Land on an answer',
+    body: 'When time’s up, you get a short, friendly summary of where everyone stood and what happens next, right in your inbox.',
   },
 ]
 
@@ -38,13 +38,13 @@ function DecisionPreview() {
   return (
     <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-[0_24px_60px_-24px_rgba(48,38,20,0.35)]">
       <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-        <span className="font-medium uppercase tracking-wider">Leadership team</span>
+        <span className="font-medium uppercase tracking-wider">The Corner Bakery</span>
         <span className="inline-flex items-center gap-1">
           <Clock className="size-3.5" aria-hidden /> Closes Friday, 5 PM
         </span>
       </div>
       <p className="font-display text-xl font-semibold leading-snug text-foreground">
-        Should we open a second location this year?
+        Should we open a second shop this year?
       </p>
       <ul className="mt-4 space-y-2.5">
         {options.map((o) => (
@@ -64,7 +64,7 @@ function DecisionPreview() {
       </ul>
       <div className="mt-4 rounded-xl bg-muted/70 p-3 text-sm">
         <p className="mb-0.5 text-xs font-semibold uppercase tracking-wider text-primary">For Open in Q3</p>
-        <p className="text-foreground/80">“The landlord’s offer expires in June, and our current store is at capacity on weekends.”</p>
+        <p className="text-foreground/80">“We’re turning people away every Saturday. Let’s go for it!”</p>
       </div>
     </div>
   )
@@ -85,17 +85,17 @@ export default function Landing() {
         <main className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-12 px-6 py-12 lg:grid-cols-[1.1fr_1fr] lg:py-20">
           <section>
             <p className="mb-4 text-sm font-medium uppercase tracking-widest text-primary">
-              Async decisions for the calls that matter
+              For the decisions that matter
             </p>
             <h1 className="font-display text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-              Make the big calls
+              Big decisions,
               <br />
-              without the meeting.
+              made together.
             </h1>
             <p className="mt-6 max-w-lg text-lg text-muted-foreground">
-              Hiring, budgets, pricing, expansion: Council gives every important business decision a
-              room. The options, the votes and the case for and against each, in one place and updated
-              live. When time’s up, you get a clear decision memo and a record of how the call was made.
+              Everyone gets a say, nobody gets steamrolled. Whether it’s a new hire, a price change or
+              opening a second shop, Council gathers everyone’s votes and thoughts in one place, then
+              wraps it all up in a clear summary when it’s time to decide.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
@@ -104,7 +104,7 @@ export default function Landing() {
               >
                 Open Council
               </Link>
-              <span className="text-sm text-muted-foreground">Free while in beta</span>
+              <span className="text-sm text-muted-foreground">Free while in beta. No meeting required.</span>
             </div>
           </section>
           <div className="flex justify-center lg:justify-end">

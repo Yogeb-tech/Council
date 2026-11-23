@@ -117,7 +117,7 @@ export default function NewDecisionPage() {
             value={title}
             maxLength={LIMITS.decisionTitle}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Should we open a second location this year?"
+            placeholder="Should we open a second shop this year?"
             autoFocus
           />
         </div>
@@ -129,7 +129,7 @@ export default function NewDecisionPage() {
             value={description}
             maxLength={LIMITS.decisionDescription}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Budget, constraints, links, and what a good outcome looks like."
+            placeholder="Give people the background: budget, timing, and what a great outcome looks like."
             rows={4}
           />
         </div>

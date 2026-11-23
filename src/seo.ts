@@ -25,9 +25,9 @@ import { APP_NAME } from './constants'
 declare const __DEEPSPACE_SITE_ORIGIN__: string | undefined
 
 export const seo = {
-  title: `${APP_NAME} | Async decision-making for important business calls`,
+  title: `${APP_NAME} | Big decisions, made together`,
   description:
-    'Put important business decisions to your team: options, votes and arguments in one live room, closed on a deadline with a clear AI decision memo.',
+    'Make big business decisions as a team. Everyone votes and shares their thoughts in one place, and Council sums it all up when it’s time to decide.',
   /** Public origin for canonical URLs, og:url, and the sitemap — no trailing
    *  slash. Replace with the custom domain once one is attached, e.g.
    *  'https://www.example.com'. */
