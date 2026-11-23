@@ -60,7 +60,7 @@ the landing page. It also wrote `docs/ARCHITECTURE.md` and
 
 - [TODO: pushed back on the sign-in approach; what you asked for and why]
 - [TODO: chose Google plus invite links over guest mode]
-- [TODO: picked the pitch and landing copy (kept the original over the friendlier rewrite in #5)]
+- [TODO: picked the pitch and landing copy (kept the original developer-team pitch over the friendlier rewrite in #5)]
 - [TODO: set the rule to always use DeepSpace primitives, which led to `email/send`]
 - [TODO: what you tested by hand on the deployed app: sign-in, team creation, voting in two windows, presence, etc.]
 
@@ -71,7 +71,7 @@ on the deployed app:
 
 - the streamed AI memo against the live AI proxy;
 - the CronRoom closing a decision at its deadline;
-- the email actually arriving (PR #6, `email/send`, is not merged yet);
+- the memo email actually arriving through `email/send` (merged in PR #6, never sent from the deployed app);
 - a new user joining through an invite link after Google sign-in.
 
 Known caveats (a removed member keeps already-open views until they reload,
