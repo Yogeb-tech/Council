@@ -19,6 +19,7 @@ interface Row {
 const UNIQUE: Record<string, string[]> = {
   team_members: ['teamId', 'userId'],
   votes: ['decisionId', 'userId'],
+  sealed_votes: ['decisionId', 'userId'],
   decision_memos: ['decisionId'],
   memo_deliveries: ['decisionId', 'channel'],
 }

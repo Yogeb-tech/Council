@@ -52,6 +52,7 @@ export default function NewDecisionPage() {
   const [deadline, setDeadline] = useState(defaultDeadline)
   const [options, setOptions] = useState<OptionDraft[]>(() => [blankOption(), blankOption()])
   const [allowMultiple, setAllowMultiple] = useState(false)
+  const [hideResults, setHideResults] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -77,6 +78,7 @@ export default function NewDecisionPage() {
       description,
       deadline: Number.isNaN(deadlineDate.getTime()) ? '' : deadlineDate.toISOString(),
       allowMultiple,
+      hideResults,
       // Blank trailing rows are ignored rather than reported.
       options: options
         .filter((o) => o.title.trim() || o.description.trim())
@@ -204,6 +206,22 @@ export default function NewDecisionPage() {
             <Label htmlFor="decision-allow-multiple">Allow multiple choices</Label>
             <p className="text-xs text-muted-foreground">
               Members can vote for every option they support, instead of picking one. This can’t be changed later.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3">
+          <Switch
+            id="decision-hide-results"
+            checked={hideResults}
+            onCheckedChange={setHideResults}
+            data-testid="hide-results-switch"
+          />
+          <div className="space-y-0.5">
+            <Label htmlFor="decision-hide-results">Hide results until voting closes</Label>
+            <p className="text-xs text-muted-foreground">
+              Nobody sees how others voted until the deadline, so people vote their own view instead of following the
+              majority. Everyone still sees how many have voted. This can’t be changed later.
             </p>
           </div>
         </div>

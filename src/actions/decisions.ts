@@ -22,11 +22,11 @@ import type { Argument, Decision, DecisionOption, Vote } from '../schemas/counci
 import { fail, ok, requireTeamRole, type Membership } from './authz'
 import { ACTION_ERROR } from '../lib/action-contract'
 import { ANY_TEAM_ROLE, isTeamManager } from '../lib/team-roles'
-import { allowsMultipleChoices, isDecisionOpen, voteOptionIds } from '../lib/decision-status'
+import { allowsMultipleChoices, hidesResults, isDecisionOpen, voteCollection, voteOptionIds } from '../lib/decision-status'
 
 /**
  * Create a decision and its options in one call.
- * Params: { teamId, title, description?, deadline (ISO string), allowMultiple?, options: [{ title, description? }] }
+ * Params: { teamId, title, description?, deadline (ISO string), allowMultiple?, hideResults?, options: [{ title, description? }] }
  *   →  { decisionId }
  *
  * Doing this in one action (instead of the client writing a decision row,
@@ -53,6 +53,8 @@ export const createDecision: ActionHandler<Env> = async ({ userId, params, tools
     deadline: new Date(input.deadline).toISOString(),
     status: 'open',
     allowMultiple: input.allowMultiple,
+    hideResults: input.hideResults,
+    ...(input.hideResults ? { sealedVoteCount: 0 } : {}),
   }
   const created = await tools.create('decisions', { ...decision })
   if (!created.success) return fail(created.error, ACTION_ERROR.createFailed)
@@ -123,10 +125,14 @@ async function optionBelongs(tools: ActionTools, optionId: string, decisionId: s
   return (found.data.record.data as unknown as DecisionOption).decisionId === decisionId
 }
 
-/** The caller's vote row on a decision, if any (uniqueOn makes it at most one). */
-async function findMyVote(tools: ActionTools, decisionId: string, userId: string) {
-  const res = await tools.query<Record<string, unknown>>('votes', { where: { decisionId, userId }, limit: 1 })
-  if (!res.success) throw new Error(`votes lookup failed: ${res.error}`)
+/**
+ * The caller's vote row on a decision, if any (uniqueOn makes it at most one).
+ * `collection` is voteCollection(decision): `sealed_votes` while a
+ * hidden-results decision is open, otherwise `votes`.
+ */
+async function findMyVote(tools: ActionTools, collection: string, decisionId: string, userId: string) {
+  const res = await tools.query<Record<string, unknown>>(collection, { where: { decisionId, userId }, limit: 1 })
+  if (!res.success) throw new Error(`${collection} lookup failed: ${res.error}`)
   const row = res.data.records[0]
   return row ? { recordId: row.recordId, data: row.data as unknown as Vote } : null
 }
@@ -180,26 +186,32 @@ export const castVote: ActionHandler<Env> = async ({ userId, params, tools }) =>
   // `optionId` keeps the first choice so rows read the same as before
   // multi-choice existed; `optionIds` is the full selection.
   const selection = { optionId: optionIds[0], optionIds }
+  // Hidden results: the vote is sealed (only its voter can read it) until
+  // the closing job reveals it after the deadline.
+  const collection = voteCollection(loaded.decision)
 
   const save = async (existing: { recordId: string; data: Vote }) => {
     if (sameSelection(voteOptionIds(existing.data), optionIds)) {
       return ok({ voteId: existing.recordId, changed: false })
     }
-    const res = await tools.update('votes', existing.recordId, selection)
+    const res = await tools.update(collection, existing.recordId, selection)
     if (!res.success) return fail(res.error, ACTION_ERROR.updateFailed)
     return ok({ voteId: existing.recordId, changed: true })
   }
 
-  const existing = await findMyVote(tools, decisionId, userId)
+  const existing = await findMyVote(tools, collection, decisionId, userId)
   if (existing) return save(existing)
 
   const vote: Vote = { teamId: loaded.decision.teamId, decisionId, userId, ...selection }
-  const created = await tools.create('votes', { ...vote })
-  if (created.success) return ok({ voteId: created.data.recordId, changed: true })
+  const created = await tools.create(collection, { ...vote })
+  if (created.success) {
+    if (hidesResults(loaded.decision)) await refreshTurnout(tools, decisionId)
+    return ok({ voteId: created.data.recordId, changed: true })
+  }
 
   // Most likely lost a race with a concurrent vote from the same user:
   // the unique constraint kept the other row, so update that one instead.
-  const winner = await findMyVote(tools, decisionId, userId)
+  const winner = await findMyVote(tools, collection, decisionId, userId)
   if (!winner) return fail(created.error, ACTION_ERROR.createFailed)
   const saved = await save(winner)
   return saved.success ? ok({ voteId: winner.recordId, changed: true }) : saved
@@ -224,9 +236,23 @@ export const retractVote: ActionHandler<Env> = async ({ userId, params, tools })
   if (closed) return closed
 
   // Scoped to the caller's own row by `userId` from the verified JWT.
-  const res = await tools.deleteWhere('votes', { decisionId, userId }, 10)
+  const res = await tools.deleteWhere(voteCollection(loaded.decision), { decisionId, userId }, 10)
   if (!res.success) return fail(res.error, ACTION_ERROR.deleteFailed)
+  if (res.data.deleted > 0 && hidesResults(loaded.decision)) await refreshTurnout(tools, decisionId)
   return ok({ removed: res.data.deleted > 0 })
+}
+
+/**
+ * Store how many members have voted on a hidden-results decision, so the
+ * page can show turnout without anyone reading the sealed votes. Recounted
+ * rather than incremented, so a count that two simultaneous votes left one
+ * short is corrected by the next vote. Best effort: the vote itself is
+ * already saved, and the closing job reveals the real votes either way.
+ */
+async function refreshTurnout(tools: ActionTools, decisionId: string) {
+  const res = await tools.query<Record<string, unknown>>('sealed_votes', { where: { decisionId }, limit: 500 })
+  if (!res.success) return
+  await tools.update('decisions', decisionId, { sealedVoteCount: res.data.records.length })
 }
 
 // ---------------------------------------------------------------------------

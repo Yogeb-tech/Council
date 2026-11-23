@@ -160,6 +160,13 @@ export const decisionsSchema: CollectionSchema = {
     // from before this column existed, which read as single-choice.
     // Read it with allowsMultipleChoices() (src/lib/decision-status.ts).
     { name: 'allowMultiple', storage: 'number', interpretation: { kind: 'boolean' }, immutable: true },
+    // 1 = votes are sealed while voting is open: they go to `sealed_votes`
+    // (each member reads only their own) and the closing job moves them to
+    // `votes` once the deadline passes. Read with hidesResults().
+    { name: 'hideResults', storage: 'number', interpretation: { kind: 'boolean' }, immutable: true },
+    // Turnout for a hidden-results decision (how many have voted, not for
+    // what), kept by castVote/retractVote.
+    { name: 'sealedVoteCount', storage: 'number', interpretation: 'plain' },
     // Written by the closing job (src/server/finalize.ts). Unset while open.
     { name: 'closedAt', storage: 'text', interpretation: { kind: 'datetime' } },
     {
@@ -205,6 +212,22 @@ export const votesSchema: CollectionSchema = {
   uniqueOn: ['decisionId', 'userId'],
   teamField: 'teamId',
   permissions: teamScoped,
+}
+
+/**
+ * Votes on a hidden-results decision while voting is open. Same columns as
+ * `votes`, but each member can read only their own row (`read: 'own'` on
+ * `userId`), so nobody, the team's owner included, can see how others voted
+ * before the deadline. The closing job (src/server/finalize.ts) copies these
+ * rows into `votes` after the deadline and then deletes them.
+ */
+const OWN_READ_ONLY: RolePermissions = { read: 'own', create: false, update: false, delete: false }
+export const sealedVotesSchema: CollectionSchema = {
+  name: 'sealed_votes',
+  columns: votesSchema.columns,
+  uniqueOn: ['decisionId', 'userId'],
+  ownerField: 'userId',
+  permissions: { '*': OWN_READ_ONLY, viewer: OWN_READ_ONLY, member: OWN_READ_ONLY, admin: OWN_READ_ONLY },
 }
 
 /** Structured for/against arguments on an option; written by Day 2's action. */
@@ -300,6 +323,7 @@ export const councilSchemas: CollectionSchema[] = [
   decisionsSchema,
   optionsSchema,
   votesSchema,
+  sealedVotesSchema,
   argumentsSchema,
   decisionMemosSchema,
   memoDeliveriesSchema,
@@ -328,6 +352,9 @@ export interface Decision {
   status: DecisionStatus
   /** Stored as 1/0; use allowsMultipleChoices(). */
   allowMultiple?: boolean | number
+  /** Stored as 1/0; use hidesResults(). */
+  hideResults?: boolean | number
+  sealedVoteCount?: number
   closedAt?: string
   finalizeState?: FinalizeState
   finalizeAttempts?: number

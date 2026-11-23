@@ -4,6 +4,7 @@
  *
  * Data flow: live `useQuery` subscriptions (decision, options, votes,
  * arguments, memo, memo deliveries) scoped by the server's `'team'` rule,
+ * plus my own sealed vote on a hidden-results decision (`'own'` rule),
  * plus a PresenceRoom for viewers. Writes go through server actions (castVote, retractVote,
  * addArgument, deleteArgument); the subscriptions then push the result to
  * every open copy of this page, including ours, so there's no local cache to
@@ -21,7 +22,7 @@ import { MemoPanel } from '@/components/council/MemoPanel'
 import { OptionCard } from '@/components/council/OptionCard'
 import { PresenceBar } from '@/components/council/PresenceBar'
 import { formatDeadline, isDecisionOpen, relativeTime } from '@/components/council/format'
-import { allowsMultipleChoices, voteOptionIds } from '@/lib/decision-status'
+import { allowsMultipleChoices, hidesResults, voteOptionIds } from '@/lib/decision-status'
 import {
   useDecision,
   useDecisionArguments,
@@ -29,6 +30,7 @@ import {
   useDecisionOptions,
   useDecisionVotes,
   useMemoDeliveries,
+  useMySealedVote,
   useMyTeamRole,
   useTeam,
 } from '@/hooks/council'
@@ -45,6 +47,7 @@ export default function DecisionPage() {
   const { decision, status } = useDecision(decisionId)
   const { options, status: optionsStatus } = useDecisionOptions(decisionId)
   const { votes, status: votesStatus } = useDecisionVotes(decisionId)
+  const { vote: mySealedVote } = useMySealedVote(decisionId)
   const { arguments: args } = useDecisionArguments(decisionId)
   const { memo } = useDecisionMemo(decisionId)
   const { deliveries } = useMemoDeliveries(decisionId)
@@ -73,7 +76,9 @@ export default function DecisionPage() {
     for (const a of args) map.set(a.data.optionId, [...(map.get(a.data.optionId) ?? []), a])
     return map
   }, [args])
-  const myVote = votes.find((v) => v.data.userId === userId) ?? null
+  // On a hidden-results decision my vote is in sealed_votes until the
+  // closing job reveals everyone's into votes.
+  const myVote = votes.find((v) => v.data.userId === userId) ?? mySealedVote
   const mySelection = myVote ? voteOptionIds(myVote.data) : []
   // Highest count wins; a tie means no single leader.
   const counts = options.map((o) => votesByOption.get(o.recordId)?.length ?? 0)
@@ -89,6 +94,10 @@ export default function DecisionPage() {
   const d = decision.data
   const open = isDecisionOpen(d, now)
   const multiple = allowsMultipleChoices(d)
+  // Hidden until the closing job flips status and reveals the votes, which
+  // happens within a few minutes of the deadline.
+  const resultsHidden = hidesResults(d) && d.status === 'open'
+  const voterCount = resultsHidden ? Number(d.sealedVoteCount ?? 0) : votes.length
 
   // castVote always takes my whole selection; these turn a click on one
   // option into the new selection.
@@ -147,9 +156,15 @@ export default function DecisionPage() {
                 multiple choices allowed
               </span>
             )}
+            {hidesResults(d) && (
+              <span className="ml-2 font-normal text-muted-foreground" data-testid="hidden-results-note">
+                results hidden until voting closes
+              </span>
+            )}
           </h2>
           <p className="text-xs text-muted-foreground" data-testid="vote-summary">
-            {votes.length} {votes.length === 1 ? 'person has' : 'people have'} voted
+            {voterCount} {voterCount === 1 ? 'person has' : 'people have'} voted
+            {!open && resultsHidden ? ' · revealing the results…' : ''}
             {open
               ? myVote
                 ? ' · you can change your vote until it closes'
@@ -173,6 +188,7 @@ export default function DecisionPage() {
                 args={argsByOption.get(o.recordId) ?? []}
                 isMyVote={mySelection.includes(o.recordId)}
                 isLeading={leaders === 1 && counts[i] === top}
+                resultsHidden={resultsHidden}
                 open={open}
                 myUserId={userId}
                 myRole={myRole}

@@ -3,7 +3,7 @@ import type { ActionHandler, ActionResult } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { actions } from '../actions/index'
 import { createFakeTools, seedUser } from '../actions/fake-tools.test-util'
-import { closeAndFinalize, emailBody, EMAIL_SEND_ENDPOINT, sendViaDeepSpaceEmail, MAX_ATTEMPTS, MAX_MEMO_ATTEMPTS, STALE_CLAIM_MS, type DeliveryInput, type DeliveryOutcome } from './finalize'
+import { closeAndFinalize, emailBody, revealSealedVotes, EMAIL_SEND_ENDPOINT, sendViaDeepSpaceEmail, MAX_ATTEMPTS, MAX_MEMO_ATTEMPTS, STALE_CLAIM_MS, type DeliveryInput, type DeliveryOutcome } from './finalize'
 
 type Store = ReturnType<typeof createFakeTools>['store']
 
@@ -13,7 +13,7 @@ async function run<T = Record<string, unknown>>(store: Store, userId: string, na
 }
 
 /** A team (alice) with one decision whose deadline is 10 minutes after `start`. */
-async function setup(opts: { vote?: boolean } = {}) {
+async function setup(opts: { vote?: boolean; hideResults?: boolean } = {}) {
   const store: Store = new Map()
   seedUser(store, 'alice', 'alice@example.com', 'Alice')
   const team = await run<{ teamId: string }>(store, 'alice', 'createTeam', { name: 'Platform' })
@@ -25,6 +25,7 @@ async function setup(opts: { vote?: boolean } = {}) {
     title: 'Which database?',
     deadline: deadline.toISOString(),
     options: [{ title: 'Postgres' }, { title: 'SQLite' }],
+    hideResults: opts.hideResults ?? false,
   })
   if (!created.success) throw new Error(created.error)
   const decisionId = created.data.decisionId
@@ -231,5 +232,51 @@ describe('sendViaDeepSpaceEmail', () => {
     const { tools } = createFakeTools('owner', new Map())
     tools.integration = (async () => ({ success: false, error: 'Insufficient credits' })) as unknown as typeof tools.integration
     expect(await sendViaDeepSpaceEmail(tools, message)).toEqual({ status: 'failed', detail: 'Email: Insufficient credits' })
+  })
+})
+
+describe('hidden results', () => {
+  const rows = (store: Store, collection: string) => [...(store.get(collection)?.values() ?? [])].map((r) => r.data)
+
+  it('keeps votes sealed while open: only turnout is public', async () => {
+    const { store, decisionId } = await setup({ hideResults: true })
+    expect(rows(store, 'votes')).toEqual([])
+    expect(rows(store, 'sealed_votes')).toEqual([expect.objectContaining({ decisionId, userId: 'alice' })])
+    expect(decisionRow(store, decisionId)).toMatchObject({ hideResults: true, sealedVoteCount: 1 })
+
+    // Retracting updates turnout too.
+    const retracted = await run(store, 'alice', 'retractVote', { decisionId })
+    expect(retracted.success).toBe(true)
+    expect(rows(store, 'sealed_votes')).toEqual([])
+    expect(decisionRow(store, decisionId).sealedVoteCount).toBe(0)
+  })
+
+  it('reveals the votes at close, before the final memo counts them', async () => {
+    const { store, decisionId, afterDeadline } = await setup({ hideResults: true })
+    const h = harness(store)
+    await h.go(afterDeadline)
+    expect(rows(store, 'sealed_votes')).toEqual([])
+    expect(rows(store, 'votes')).toEqual([expect.objectContaining({ decisionId, userId: 'alice' })])
+    expect(memoRow(store)).toEqual([expect.objectContaining({ kind: 'final', voteCount: 1 })])
+  })
+
+  it('revealing again is a no-op (a re-run after a crash never duplicates a vote)', async () => {
+    const { store, decisionId } = await setup({ hideResults: true })
+    const { tools } = createFakeTools('owner', store)
+    // Simulate a crash after the copy but before the sealed row was deleted.
+    const sealed = rows(store, 'sealed_votes')[0]
+    await tools.create('votes', { ...sealed })
+    expect(await revealSealedVotes(tools, decisionId)).toBe(1)
+    expect(await revealSealedVotes(tools, decisionId)).toBe(0)
+    expect(rows(store, 'votes')).toHaveLength(1)
+  })
+
+  it('refuses votes after the deadline, so nothing is sealed after the reveal', async () => {
+    const { store, decisionId } = await setup({ hideResults: true, vote: false })
+    store.get('decisions')!.get(decisionId)!.data.deadline = new Date(Date.now() - 1000).toISOString()
+    const optionId = [...store.get('options')!.values()][0].recordId
+    const res = await run(store, 'alice', 'castVote', { decisionId, optionIds: [optionId] })
+    expect(res.success).toBe(false)
+    expect(rows(store, 'sealed_votes')).toEqual([])
   })
 })

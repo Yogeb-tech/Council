@@ -101,6 +101,8 @@ export function createDecisionInput(now: number = Date.now()) {
         .max(LIMITS.maxOptions, `Add at most ${LIMITS.maxOptions} options`),
       /** Approval voting: members may back several options. */
       allowMultiple: z.boolean().optional().default(false),
+      /** Seal votes until the deadline so voters can't follow the majority. */
+      hideResults: z.boolean().optional().default(false),
     })
     .superRefine((value, ctx) => {
       const deadline = Date.parse(value.deadline)

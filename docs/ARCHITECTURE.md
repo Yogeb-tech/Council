@@ -22,9 +22,10 @@ All Council collections live in the app's single RecordRoom scope
 | `teams`        | teamId (= its own record id), name, description, inviteToken       | `inviteToken` is the invite-link secret; empty = no link. Team members can read it. |
 | `team_members` | teamId, userId, role (`owner`/`admin`/`member`), status           | `uniqueOn: [teamId, userId]`. Read by the SDK's `'team'` rule. |
 | `team_invites` | teamId, email, role, status (`pending`/`accepted`/`declined`/`revoked`), teamName, invitedBy | Invite by email. |
-| `decisions`    | teamId, title, description, deadline (ISO), status (`open`/`closed`), allowMultiple (1/0) | `allowMultiple` is set at creation and immutable. |
+| `decisions`    | teamId, title, description, deadline (ISO), status (`open`/`closed`), allowMultiple (1/0), hideResults (1/0), sealedVoteCount | `allowMultiple` and `hideResults` are set at creation and immutable. `sealedVoteCount` is turnout while results are hidden. |
 | `options`      | teamId, decisionId, title, description, position                  | |
 | `votes`        | teamId, decisionId, optionId (first choice), optionIds (JSON list), userId | `uniqueOn: [decisionId, userId]`: one row per member per decision, holding their whole selection. |
+| `sealed_votes` | same columns as `votes` | Votes on a hidden-results decision while it is open. `ownerField: userId`, `read: 'own'`: each member reads only their own row. Moved into `votes` by the closing job. |
 | `arguments`    | teamId, decisionId, optionId, userId, stance (`for`/`against`), content | Author, stance and option are immutable. |
 | `decision_memos` | teamId, decisionId, content, kind (`draft`/`final`), generatedBy, generatedAt, model, voteCount, argumentCount | `uniqueOn: [decisionId]`: one memo per decision, replaced on regenerate. |
 | `memo_deliveries` | teamId, decisionId, channel (`email`), status (`sending`/`sent`/`skipped`/`failed`), attempts, claimedAt, sentAt, detail | `uniqueOn: [decisionId, channel]`: creating the row claims the delivery. |
@@ -113,6 +114,28 @@ counter to drift.
 Votes are visible to the team (each option shows who voted for it). This is a
 team decision tool, not a secret ballot.
 
+### Hidden results until the deadline
+
+The creator can turn on "Hide results until voting closes" so voters aren't
+swayed by the majority. It is enforced by the server's read rules, not just
+hidden in the UI:
+
+- While the decision is open, `castVote`/`retractVote` write to
+  `sealed_votes` instead of `votes` (`voteCollection()` in
+  `src/lib/decision-status.ts`). That collection is `read: 'own'` on
+  `userId` for every role, so the RecordRoom sends each member only their
+  own vote. Nobody, the team owner included, can read anyone else's.
+- The page shows turnout from `decisions.sealedVoteCount` (a recount after
+  each vote) and "Results hidden until voting closes" on every option.
+- Draft memos never see sealed votes and are told votes are hidden.
+- After the deadline, the closing job closes the decision and
+  `revealSealedVotes()` copies each sealed vote into `votes` and deletes it
+  (re-runnable). It runs again before the final memo, so the memo always
+  counts every vote. Results appear within a few minutes of the deadline;
+  until then the page says "revealing the results…".
+- No vote can land in `sealed_votes` after the reveal, because voting is
+  refused once the deadline has passed.
+
 ## AI memo and closing job
 
 - `POST /api/decisions/:decisionId/memo` streams a draft memo for an open
@@ -134,7 +157,7 @@ an app to delete it, and the auth server doesn't enable Better Auth's
 delete-user endpoint, so `deleteMyAccount` removes Council data only and the
 settings page says so. It hands each team the caller owns to an admin (else
 the longest-standing member), deletes teams with no one else in them, then
-deletes the caller's arguments, votes, memberships and invites to their email.
+deletes the caller's arguments, votes (sealed ones too), memberships and invites to their email.
 The SDK-managed `users` row (name, email, avatar) is left alone because the
 RecordRoom maintains it on every connection.
 

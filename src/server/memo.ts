@@ -27,7 +27,7 @@ import type {
   TeamMember,
   Vote,
 } from '../schemas/council-schema'
-import { allowsMultipleChoices, voteOptionIds } from '../lib/decision-status'
+import { allowsMultipleChoices, hidesResults, voteOptionIds } from '../lib/decision-status'
 
 /** Model for memos: the SDK's default for direct (non-agent) generation. */
 export const MEMO_MODEL_ID: string = DEEPSPACE_AI_DEFAULTS.directGeneration
@@ -59,6 +59,11 @@ export interface MemoFacts {
   leaders: string[]
   /** Every voter backed the leading option (single leader only). */
   unanimous: boolean
+  /**
+   * Hidden-results decision that is still open: votes are sealed, so the
+   * facts carry no votes at all and the memo must not talk about them.
+   */
+  votesHidden: boolean
 }
 
 interface Row<T> {
@@ -147,6 +152,7 @@ export function buildMemoFacts(input: {
     options,
     leaders,
     unanimous: leaders.length === 1 && votes.length > 0 && top === votes.length,
+    votesHidden: hidesResults(decision) && decision.status === 'open',
   }
 }
 
@@ -199,17 +205,25 @@ export function buildMemoPrompt(facts: MemoFacts, kind: MemoKind, now = new Date
       : `Status: voting is still OPEN (as of ${now.toISOString()}). Results may change.`,
   )
   lines.push(`Voting mode: ${facts.allowMultiple ? 'members may back several options' : 'one option per member'}`)
-  lines.push(`Team members: ${facts.teamSize}. Members who voted: ${facts.voterCount}.`)
-  lines.push(
-    `Leading option(s): ${facts.leaders.length ? facts.leaders.map(asData).join(', ') : 'none (no votes)'}` +
-      (facts.leaders.length > 1 ? ' (tie)' : ''),
-  )
-  lines.push(`Unanimous: ${facts.unanimous ? 'yes' : 'no'}`)
+  if (facts.votesHidden) {
+    lines.push(
+      'Votes: HIDDEN until the deadline, so voters are not swayed by the majority. You have no vote data.',
+      'Do not mention, guess or imply how anyone voted or which option leads.',
+      'Under "Voting results", write only: "Votes are hidden until voting closes."',
+    )
+  } else {
+    lines.push(`Team members: ${facts.teamSize}. Members who voted: ${facts.voterCount}.`)
+    lines.push(
+      `Leading option(s): ${facts.leaders.length ? facts.leaders.map(asData).join(', ') : 'none (no votes)'}` +
+        (facts.leaders.length > 1 ? ' (tie)' : ''),
+    )
+    lines.push(`Unanimous: ${facts.unanimous ? 'yes' : 'no'}`)
+  }
   lines.push('')
   facts.options.forEach((o, i) => {
     lines.push(`Option ${i + 1}: ${asData(o.title)}`)
     if (o.description) lines.push(`  Description: ${asData(o.description)}`)
-    lines.push(`  Votes: ${o.votes}${o.voters.length ? ` (${o.voters.map(asData).join(', ')})` : ''}`)
+    if (!facts.votesHidden) lines.push(`  Votes: ${o.votes}${o.voters.length ? ` (${o.voters.map(asData).join(', ')})` : ''}`)
     for (const [stance, list] of [['for', o.for], ['against', o.against]] as const) {
       if (list.length === 0) lines.push(`  Arguments ${stance}: none`)
       for (const a of list) {
@@ -227,10 +241,16 @@ export function buildFallbackMemo(facts: MemoFacts, reason: 'empty' | 'ai_unavai
   const lines = ['## Executive summary']
   lines.push(
     reason === 'empty'
-      ? 'No votes or arguments were submitted, so there is nothing to summarize yet.'
+      ? facts.votesHidden
+        ? 'No arguments yet, and votes stay hidden until voting closes, so there is nothing to summarize yet.'
+        : 'No votes or arguments were submitted, so there is nothing to summarize yet.'
       : 'The AI summary could not be generated. These are the recorded results.',
   )
   lines.push('', '## Voting results')
+  if (facts.votesHidden) {
+    lines.push('- Votes are hidden until voting closes.')
+    return lines.join('\n')
+  }
   lines.push(`- ${facts.voterCount} of ${facts.teamSize} team members voted.`)
   for (const o of facts.options) lines.push(`- ${o.title}: ${o.votes} ${o.votes === 1 ? 'vote' : 'votes'}`)
   if (facts.leaders.length === 1) lines.push(`- Leading option: ${facts.leaders[0]}${facts.unanimous ? ' (unanimous)' : ''}`)

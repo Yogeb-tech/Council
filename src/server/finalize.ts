@@ -2,7 +2,9 @@
  * The closing job, run by CronRoom (src/cron.ts) every few minutes:
  *
  *  1. Close: every `open` decision whose deadline has passed becomes
- *     `closed`, with `closedAt` and `finalizeState: 'pending'`.
+ *     `closed`, with `closedAt` and `finalizeState: 'pending'`. A
+ *     hidden-results decision then has its sealed votes revealed: copied
+ *     from `sealed_votes` into `votes`, where the whole team can read them.
  *  2. Finalize: for each `pending` decision (a few per run), write the final
  *     AI memo, then email it to the team, then mark it `done`.
  *
@@ -31,8 +33,10 @@ import type {
   MemoDelivery,
   Team,
   TeamMember,
+  Vote,
 } from '../schemas/council-schema'
 import { DELIVERY_CHANNELS } from '../schemas/council-schema'
+import { hidesResults } from '../lib/decision-status'
 import { createActionTools } from './action-routes'
 import { buildFallbackMemo, generateMemoText, getMemo, isEmptyDiscussion, loadMemoFacts, MEMO_MODEL_ID, saveMemo } from './memo'
 
@@ -122,10 +126,50 @@ export async function closeDueDecisions(tools: ActionTools, now: Date): Promise<
       closedAt: now.toISOString(),
       finalizeState: 'pending',
     })
-    if (res.success) closed++
-    else console.error(`[closing-job] close ${row.recordId} failed: ${res.error}`)
+    if (!res.success) {
+      console.error(`[closing-job] close ${row.recordId} failed: ${res.error}`)
+      continue
+    }
+    closed++
+    if (hidesResults(row.data)) {
+      try {
+        await revealSealedVotes(tools, row.recordId)
+      } catch (err) {
+        // finalizeDecision reveals again before writing the memo.
+        console.error(`[closing-job] reveal ${row.recordId} failed: ${loggableError(err)}`)
+      }
+    }
   }
   return closed
+}
+
+/**
+ * Move a closed decision's sealed votes into `votes`. Safe to re-run: a
+ * vote already copied (uniqueOn decisionId+userId) is overwritten with the
+ * same selection, and each sealed row is deleted only after its copy is
+ * saved. Throws if anything is left, so the memo never counts half the votes.
+ */
+export async function revealSealedVotes(tools: ActionTools, decisionId: string): Promise<number> {
+  const sealed = await query<Vote>(tools, 'sealed_votes', { decisionId }, 500)
+  for (const row of sealed) {
+    const vote: Vote = {
+      teamId: row.data.teamId,
+      decisionId,
+      userId: row.data.userId,
+      optionId: row.data.optionId,
+      optionIds: row.data.optionIds,
+    }
+    const created = await tools.create('votes', { ...vote })
+    if (!created.success) {
+      const existing = (await query<Vote>(tools, 'votes', { decisionId, userId: vote.userId }, 1))[0]
+      if (!existing) throw new Error(`reveal vote failed: ${created.error}`)
+      const updated = await tools.update('votes', existing.recordId, { optionId: vote.optionId, optionIds: vote.optionIds })
+      if (!updated.success) throw new Error(`reveal vote failed: ${updated.error}`)
+    }
+    const removed = await tools.remove('sealed_votes', row.recordId)
+    if (!removed.success) throw new Error(`sealed vote cleanup failed: ${removed.error}`)
+  }
+  return sealed.length
 }
 
 /** Step 2 for one decision. Returns true once nothing is left to do for it. */
@@ -146,6 +190,9 @@ async function finalizeDecision(
     return true
   }
   const team = teamRes.data.record.data as unknown as Team
+
+  // Votes must be revealed before the final memo counts them.
+  if (hidesResults(decision)) await revealSealedVotes(tools, decisionId)
 
   // 2a. Final memo (once).
   let memo = await getMemo(tools, decisionId)
