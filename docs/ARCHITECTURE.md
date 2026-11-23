@@ -1,5 +1,15 @@
 # Council — Architecture
 
+## Sign-in
+
+Council uses DeepSpace auth through the SDK's `<AuthOverlay>`. **Google is the
+main sign-in.** GitHub is turned off (`src/lib/auth-providers.ts`; the
+social-redirect route refuses other providers). The overlay's built-in
+email/password form still signs in accounts that already exist, but the SDK
+offers no email sign-up, and a custom sign-up form was tried and dropped
+because the platform's support for it couldn't be confirmed. New users sign
+up with Google.
+
 ## Data model
 
 All Council collections live in the app's single RecordRoom scope
@@ -114,8 +124,7 @@ Details, the grounding rules and the setup still needed are in
 
 ## Account deletion
 
-The DeepSpace sign-in (email/password or Google; GitHub sign-in is turned off in
-`src/lib/auth-providers.ts`) lives on DeepSpace's
+The DeepSpace sign-in (Google, or an existing email/password account) lives on DeepSpace's
 shared auth server and is used by every DeepSpace app. The SDK has no API for
 an app to delete it, and the auth server doesn't enable Better Auth's
 delete-user endpoint, so `deleteMyAccount` removes Council data only and the
