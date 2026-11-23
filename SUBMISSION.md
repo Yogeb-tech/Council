@@ -13,6 +13,20 @@ the tradeoffs on demand. At the deadline a scheduled job closes voting,
 writes the final memo and emails it to the team. Teams grow by email invite
 or a shareable invite link.
 
+## Signing in (for reviewers)
+
+Use **Sign in with Google**. DeepSpace's sign-in box also always shows an
+email/password form, and apps can't remove it. That form only works for
+accounts that have a DeepSpace password, such as DeepSpace test accounts. It
+won't take a Gmail address you normally use with Google, because that account
+has no DeepSpace password. This is a platform limit, not a Council bug.
+
+If you'd rather not use Google, use this demo account in the email/password form:
+
+- **Email:** [TODO: reviewer@deepspace.test]
+- **Password:** [TODO]
+- **Demo team:** [TODO: invite link to a team with a sample decision, or "create your own team from the dashboard"]
+
 ## DeepSpace integrations used
 
 - **Auth** (`<AuthOverlay>`, Google sign-in) for identity.
@@ -39,8 +53,9 @@ would be one more deliverer.
 **Google sign-in plus invite links instead of guest mode or email/password.**
 Guest mode would have made trying the app easier, but DeepSpace guests are
 read-only, and voting, arguments and permissions all depend on a real
-identity. Email/password was dropped because the SDK has no email sign-up
-and a custom form couldn't be confirmed against the platform. Invite links
+identity. Email/password sign-up was dropped because the SDK has no email sign-up
+and a custom form couldn't be confirmed against the platform; the built-in
+form remains only for DeepSpace password accounts such as the demo account. Invite links
 keep onboarding to one click for a teammate while every vote stays tied to a
 signed-in member.
 
