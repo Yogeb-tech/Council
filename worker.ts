@@ -123,6 +123,13 @@ export interface Env extends DOBindings<typeof __DO_MANIFEST__> {
    * a custom domain). Defaults to https://<APP_NAME>.app.space.
    */
   APP_PUBLIC_URL?: string
+  /**
+   * Optional: Resend API key (secret) and sender, e.g.
+   * "Council <council@yourdomain.com>". When both are set, final memos are
+   * emailed through Resend instead of the creator's Gmail.
+   */
+  RESEND_API_KEY?: string
+  EMAIL_FROM?: string
 }
 
 export type AppContext = { Bindings: Env }

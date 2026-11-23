@@ -3,7 +3,7 @@ import type { ActionHandler, ActionResult } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import { actions } from '../actions/index'
 import { createFakeTools, seedUser } from '../actions/fake-tools.test-util'
-import { closeAndFinalize, emailBody, MAX_ATTEMPTS, MAX_MEMO_ATTEMPTS, STALE_CLAIM_MS, type DeliveryInput, type DeliveryOutcome } from './finalize'
+import { closeAndFinalize, emailBody, RESEND_ENDPOINT, sendViaResend, MAX_ATTEMPTS, MAX_MEMO_ATTEMPTS, STALE_CLAIM_MS, type DeliveryInput, type DeliveryOutcome } from './finalize'
 
 type Store = ReturnType<typeof createFakeTools>['store']
 
@@ -209,5 +209,31 @@ describe('emailBody', () => {
     expect(body).toContain('Postgres leads.')
     expect(body).toContain('https://council.app.space/decisions/d1')
     expect(body).toContain('written by AI')
+  })
+})
+
+describe('sendViaResend', () => {
+  const message = { to: ['a@example.com', 'yogeb@mailer.me'], subject: 'Decision closed: DB', text: 'memo' }
+
+  it('posts one message to every recipient with the key as a bearer token', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ id: 'e1' }), { status: 200 }))
+    const out = await sendViaResend({ apiKey: 're_test', from: 'Council <c@example.com>' }, message, fetchImpl as unknown as typeof fetch)
+    expect(out).toEqual({ status: 'sent' })
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe(RESEND_ENDPOINT)
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer re_test')
+    expect(JSON.parse(init.body as string)).toEqual({
+      from: 'Council <c@example.com>',
+      to: ['a@example.com', 'yogeb@mailer.me'],
+      subject: 'Decision closed: DB',
+      text: 'memo',
+    })
+  })
+
+  it('reports Resend’s error message as a failed attempt, without the key', async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ name: 'validation_error', message: 'Domain not verified' }), { status: 403 }))
+    const out = await sendViaResend({ apiKey: 're_secret', from: 'c@example.com' }, message, fetchImpl as unknown as typeof fetch)
+    expect(out).toEqual({ status: 'failed', detail: 'Email: Domain not verified' })
+    expect(JSON.stringify(out)).not.toContain('re_secret')
   })
 })
