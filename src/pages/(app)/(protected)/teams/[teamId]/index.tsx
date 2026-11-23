@@ -9,7 +9,9 @@ import { ArrowLeft, Plus, Vote } from 'lucide-react'
 import { buttonVariants, EmptyState } from '@/components/ui'
 import { DecisionList } from '@/components/council/DecisionList'
 import { MembersPanel } from '@/components/council/MembersPanel'
+import { InviteLinkPanel } from '@/components/council/InviteLinkPanel'
 import { NotFoundPanel } from '@/components/council/NotFoundPanel'
+import { isTeamManager } from '@/lib/team-roles'
 import { useMyTeamRole, useTeam, useTeamDecisions } from '@/hooks/council'
 
 export default function TeamPage() {
@@ -66,9 +68,16 @@ export default function TeamPage() {
           )}
         </section>
 
-        <aside className="rounded-xl border border-border bg-card p-4 self-start">
-          <MembersPanel teamId={teamId} teamName={team.data.name} myUserId={userId} myRole={myRole} />
-        </aside>
+        <div className="space-y-4 self-start">
+          <aside className="rounded-xl border border-border bg-card p-4">
+            <MembersPanel teamId={teamId} teamName={team.data.name} myUserId={userId} myRole={myRole} />
+          </aside>
+          {isTeamManager(myRole) && (
+            <aside className="rounded-xl border border-border bg-card p-4">
+              <InviteLinkPanel teamId={teamId} token={team.data.inviteToken ?? ''} />
+            </aside>
+          )}
+        </div>
       </div>
     </div>
   )

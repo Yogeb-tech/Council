@@ -3,8 +3,8 @@
  * teams I belong to (live, via team_members), and a way to create a team.
  */
 
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuthProfileReady } from 'deepspace'
 import { Plus, Users } from 'lucide-react'
 import { Badge, Button, EmptyState } from '@/components/ui'
@@ -13,6 +13,7 @@ import { InvitesPanel } from '@/components/council/InvitesPanel'
 import { isDecisionOpen, ROLE_LABEL } from '@/components/council/format'
 import { useMyInvites, useMyMemberships, useTeam, useTeamDecisions } from '@/hooks/council'
 import type { TeamRole } from '@/schemas/council-schema'
+import { takePendingInvite } from '@/lib/pending-invite'
 
 export default function DashboardPage() {
   const { userId, user } = useAuthProfileReady({ requireUser: true })
@@ -20,6 +21,13 @@ export default function DashboardPage() {
   // Wait for the profile (the users row) so the invite lookup knows my email.
   const invites = useMyInvites(!!userId && !!user)
   const [creating, setCreating] = useState(false)
+  const navigate = useNavigate()
+
+  // Back from Google sign-in started on an invite link: finish joining there.
+  useEffect(() => {
+    const token = takePendingInvite()
+    if (token) navigate(`/join/${encodeURIComponent(token)}`, { replace: true })
+  }, [navigate])
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 px-4 py-8" data-testid="dashboard">

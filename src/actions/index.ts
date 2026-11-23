@@ -2,6 +2,7 @@ import type { ActionHandler } from 'deepspace/worker'
 import type { Env } from '../../worker'
 import type { ActionName } from '../lib/action-contract'
 import { deleteMyAccount } from './account'
+import { createInviteLink, disableInviteLink, getInviteLink, joinWithInviteLink } from './invite-links'
 import { addArgument, castVote, createDecision, deleteArgument, retractVote } from './decisions'
 import {
   acceptInvite,
@@ -27,6 +28,10 @@ export const actions: Record<ActionName, ActionHandler<Env>> = {
   acceptInvite,
   declineInvite,
   removeMember,
+  createInviteLink,
+  disableInviteLink,
+  getInviteLink,
+  joinWithInviteLink,
   createDecision,
   castVote,
   retractVote,

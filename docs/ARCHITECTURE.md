@@ -19,7 +19,7 @@ All Council collections live in the app's single RecordRoom scope
 | Collection     | Key fields                                                        | Notes |
 |----------------|-------------------------------------------------------------------|-------|
 | `users`        | email, name, imageUrl, role                                       | SDK-managed; created on first sign-in. |
-| `teams`        | teamId (= its own record id), name, description                   | |
+| `teams`        | teamId (= its own record id), name, description, inviteToken       | `inviteToken` is the invite-link secret; empty = no link. Team members can read it. |
 | `team_members` | teamId, userId, role (`owner`/`admin`/`member`), status           | `uniqueOn: [teamId, userId]`. Read by the SDK's `'team'` rule. |
 | `team_invites` | teamId, email, role, status (`pending`/`accepted`/`declined`/`revoked`), teamName, invitedBy | Invite by email. |
 | `decisions`    | teamId, title, description, deadline (ISO), status (`open`/`closed`), allowMultiple (1/0) | `allowMultiple` is set at creation and immutable. |
@@ -70,6 +70,10 @@ Team roles: **owner** (creator; invites, removes anyone else, cannot leave),
 | `listMyInvites` | invitee                 | Pending invites whose email matches the caller's sign-in email. |
 | `acceptInvite`  | invitee                 | Creates the membership, marks the invite accepted. |
 | `declineInvite` | invitee                 | Marks the invite declined. |
+| `createInviteLink` | owner/admin          | Creates or replaces the team's shareable link (`/join/<token>`, 32 random bytes); replacing turns the old link off. |
+| `disableInviteLink` | owner/admin         | Turns the link off. |
+| `getInviteLink` | any signed-in user with a live token | Team name and whether the caller is already a member, for the join page. |
+| `joinWithInviteLink` | any signed-in user with a live token | Joins the team as a `member` (idempotent). |
 | `removeMember`  | owner/admin, or self    | Removes a member, or leaves the team. |
 | `createDecision`| any team member         | Creates the decision (status `open`) and its 2–10 options; rolls back on failure. |
 | `castVote`      | any team member, open decision | Sets the caller's selection `{ optionIds }` (exactly one unless the decision allows multiple); see "Voting" below. |
@@ -167,7 +171,8 @@ server-actions guide.
 ## Pages
 
 - `/home` — dashboard: pending invites, team cards (open-decision counts), create team.
-- `/teams/:teamId` — decisions list, members, invite form, pending invites, leave team.
+- `/teams/:teamId` — decisions list, members, invite form, pending invites, invite link (owner/admin), leave team.
+- `/join/:token` — join a team from its invite link. Not behind the sign-in gate, so a signed-out visitor is told what the link is; the token is kept in sessionStorage across Google sign-in (which lands on `/home`, and the dashboard forwards back).
 - `/teams/:teamId/new-decision` — create-decision form.
 - `/decisions/:decisionId` — decision detail: live vote tallies, voting, for/against arguments per option, who's viewing, and the AI memo with delivery status.
 
