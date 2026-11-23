@@ -24,6 +24,7 @@ export const ACTION = {
   createDecision: 'createDecision',
   castVote: 'castVote',
   retractVote: 'retractVote',
+  closeDecisionEarly: 'closeDecisionEarly',
   addArgument: 'addArgument',
   deleteArgument: 'deleteArgument',
   deleteMyAccount: 'deleteMyAccount',

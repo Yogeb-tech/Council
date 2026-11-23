@@ -49,6 +49,11 @@ CronRoom task `close-decisions`, every 2 minutes (`src/cron.ts`). Each run:
    failures it falls back to the tally), then emails it to the team,
    then sets `finalizeState: 'done'`.
 
+A team owner or admin can also close a decision early ("Close now" on the
+team page, the `closeDecisionEarly` action). That does step 1 for that one
+decision straight away (the same `closeDecision()`), so the job's next run
+writes its final memo and emails it, within about 2 minutes.
+
 Idempotency: `memo_deliveries` has one row per (decision, channel), unique in
 the schema, so creating it is a claim. `sent` and `skipped` are never retried;
 `failed` is retried up to 3 attempts; a `sending` claim older than 10 minutes

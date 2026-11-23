@@ -64,7 +64,7 @@ export default function TeamPage() {
               className="rounded-xl border border-dashed border-border"
             />
           ) : (
-            <DecisionList decisions={decisions} />
+            <DecisionList decisions={decisions} canClose={isTeamManager(myRole)} />
           )}
         </section>
 

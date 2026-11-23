@@ -79,6 +79,7 @@ Team roles: **owner** (creator; invites, removes anyone else, cannot leave),
 | `createDecision`| any team member         | Creates the decision (status `open`) and its 2–10 options; rolls back on failure. |
 | `castVote`      | any team member, open decision | Sets the caller's selection `{ optionIds }` (exactly one unless the decision allows multiple); see "Voting" below. |
 | `retractVote`   | any team member, open decision | Deletes the caller's own vote (idempotent). |
+| `closeDecisionEarly` | owner/admin, open decision | Closes voting now, before the deadline: same close as the closing job (`closeDecision()` in `src/server/closing.ts`), reveals hidden votes, and leaves the final memo and email to the job's next run. A "Close now" button on the team page's decision list. |
 | `addArgument`   | any team member, open decision | Posts a for/against argument (≤ 2000 chars) on one option; author = caller. |
 | `deleteArgument`| author, or team owner/admin; open decision | Deletes an argument. Closed decisions are frozen so the memo has a stable record. |
 
