@@ -6,7 +6,7 @@
 |---|---|---|
 | AI decision memo (streamed draft) | `src/server/memo-routes.ts`, `src/server/memo.ts`, `src/components/council/MemoPanel.tsx` | Built, unit-tested (prompt + facts). Not yet run against the live AI proxy. |
 | Closing job (close voting, final memo, email) | `src/cron.ts`, `src/server/finalize.ts` | Built, unit-tested with fakes. Not yet run on a deployed CronRoom. |
-| Email delivery (Resend, or Gmail via Composio) | `sendEmail` in `src/server/finalize.ts` | Built, Resend request unit-tested; **needs a Resend key or a Gmail connection** (below). |
+| Email delivery (Gmail via DeepSpace's Composio integration) | `sendEmail` in `src/server/finalize.ts` | Built; **needs the decision creator to have connected Gmail** (below). |
 
 Slack delivery was left out on purpose (no Slack workspace to test with).
 Adding it later means one more entry in `DELIVERY_CHANNELS`
@@ -72,27 +72,20 @@ build environment, so the Gmail call is written from the SDK's own type docs
 ### Email
 
 Final memos go to every active team member's sign-in address, on any domain
-(nothing in Council restricts domains). Two senders, tried in this order:
+(nothing in Council restricts domains). Council uses only what DeepSpace
+provides: Gmail through its Composio integration,
+`callComposio(env, 'execute-tool', …, { asUser: <decision creator> })`, sent
+from the creator's own Gmail. The SDK has no built-in email service.
 
-1. **Resend** (recommended, no per-user setup). Set two app secrets:
-   ```sh
-   npx deepspace secrets set RESEND_API_KEY=re_...
-   npx deepspace secrets set EMAIL_FROM="Council <council@yourdomain.com>"
-   ```
-   Resend only delivers to arbitrary recipients from a **domain you have
-   verified in Resend** (DNS records). Without one, its test sender
-   `onboarding@resend.dev` only delivers to the email of your own Resend
-   account, which is enough for a demo to yourself. Resend's error message
-   (e.g. "domain not verified") shows on the decision page and the send is
-   retried up to 3 times.
-2. **Gmail via Composio** (used only when the Resend secrets are absent):
-   `callComposio(env, 'execute-tool', …, { asUser: <decision creator> })`,
-   sent from the creator's own Gmail. The creator must have connected Gmail
-   through Composio; there is no "Connect Gmail" button in the app yet.
-   Argument names (`recipient_email`, `extra_recipients`, `subject`, `body`,
-   `is_html`) are unverified here.
-
-If neither is available the email is recorded as `skipped`.
+- The creator must have connected Gmail through Composio. There is no
+  "Connect Gmail" button in the app yet: the SDK types document
+  `requiresConnection` on a call but not the endpoint that starts a
+  connection, and the integration catalog was unreachable from the build
+  environment.
+- Argument names (`recipient_email`, `extra_recipients`, `subject`, `body`,
+  `is_html`) are unverified here.
+- No connection: the email is recorded as `skipped` ("The decision creator
+  has not connected Gmail.") and shown on the decision page.
 
 ### Optional
 

@@ -303,25 +303,16 @@ export function emailBody(input: DeliveryInput): string {
 }
 
 /**
- * Email the final memo to every active team member, whatever their domain.
- *
- * Two senders, in order:
- *  1. Resend (transactional email API), when the app has the RESEND_API_KEY
- *     and EMAIL_FROM secrets. No per-user setup; sends from the app's own
- *     address.
- *  2. Otherwise Gmail through Composio, from the decision creator's own
- *     connected Gmail (`asUser` runs as them, billed to the app owner).
- *     No connection → skipped, not failed.
+ * Email the final memo to every active team member, whatever their domain,
+ * through DeepSpace's Composio integration: Gmail, from the decision
+ * creator's own connected account (`asUser` runs as them, billed to the app
+ * owner). No connection -> skipped, not failed.
  */
 async function sendEmail(env: Env, tools: ActionTools, input: DeliveryInput): Promise<DeliveryOutcome> {
   const recipients = await teamEmails(tools, input.decision.teamId)
   if (recipients.length === 0) return { status: 'skipped', detail: 'No team member has an email address.' }
-  const message = { to: recipients, subject: emailSubject(input), text: emailBody(input) }
-
-  if (env.RESEND_API_KEY && env.EMAIL_FROM) {
-    return sendViaResend({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM }, message)
-  }
   if (!input.creatorId) return { status: 'skipped', detail: 'Decision creator unknown.' }
+  const message = { to: recipients, subject: emailSubject(input), text: emailBody(input) }
   return sendViaGmail(env, input.creatorId, message)
 }
 
@@ -333,27 +324,6 @@ export interface EmailMessage {
 
 export function emailSubject(input: DeliveryInput) {
   return `Decision closed: ${input.decision.title}`
-}
-
-/** Resend's documented send endpoint. One request; Resend allows up to 50 recipients. */
-export const RESEND_ENDPOINT = 'https://api.resend.com/emails'
-
-export async function sendViaResend(
-  config: { apiKey: string; from: string },
-  message: EmailMessage,
-  fetchImpl: typeof fetch = fetch,
-): Promise<DeliveryOutcome> {
-  const res = await fetchImpl(RESEND_ENDPOINT, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: config.from, to: message.to.slice(0, 50), subject: message.subject, text: message.text }),
-    signal: AbortSignal.timeout(30_000),
-  })
-  if (res.ok) return { status: 'sent' }
-  // Resend answers { name, message } on errors; never echo the request (it holds the key).
-  const body = (await res.json().catch(() => null)) as { message?: unknown } | null
-  const reason = typeof body?.message === 'string' ? body.message : `HTTP ${res.status}`
-  return { status: 'failed', detail: `Email: ${reason}`.slice(0, 300) }
 }
 
 async function sendViaGmail(env: Env, creatorId: string, message: EmailMessage): Promise<DeliveryOutcome> {
@@ -369,7 +339,7 @@ async function sendViaGmail(env: Env, creatorId: string, message: EmailMessage):
     { asUser: creatorId },
   )) as { requiresConnection?: boolean } | null
   if (data && typeof data === 'object' && data.requiresConnection) {
-    return { status: 'skipped', detail: 'No email sender is set up (no Resend key, and the creator has not connected Gmail).' }
+    return { status: 'skipped', detail: 'The decision creator has not connected Gmail.' }
   }
   return { status: 'sent' }
 }
