@@ -86,6 +86,10 @@ export const teamsSchema: CollectionSchema = {
     teamIdColumn,
     { name: 'name', storage: 'text', interpretation: 'plain', required: true, maxLength: 80 },
     { name: 'description', storage: 'text', interpretation: 'plain', maxLength: 500 },
+    // Secret for the shareable invite link (/join/<token>). Empty = no link.
+    // Readable by team members (who may share it anyway); written only by the
+    // createInviteLink / disableInviteLink actions (owner/admin).
+    { name: 'inviteToken', storage: 'text', interpretation: 'plain', maxLength: 100 },
   ],
   teamField: 'teamId',
   permissions: teamScoped,
@@ -306,7 +310,7 @@ export const councilSchemas: CollectionSchema[] = [
  * envelopes: { recordId, data, createdBy, createdAt, updatedAt }.
  * Keep these in sync with the columns above.
  */
-export interface Team { teamId: string; name: string; description?: string }
+export interface Team { teamId: string; name: string; description?: string; inviteToken?: string }
 export interface TeamMember { teamId: string; userId: string; role: TeamRole; status?: string }
 export interface TeamInvite {
   teamId: string

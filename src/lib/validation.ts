@@ -69,6 +69,12 @@ export const inviteIdInput = z.object({ inviteId: recordId })
 
 export const teamIdInput = z.object({ teamId: recordId })
 
+/** An invite-link token: what newInviteToken() makes (base64url, 43 chars). */
+export const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,100}$/
+export const inviteTokenInput = z.object({
+  token: z.string({ error: 'Missing invite link' }).trim().regex(INVITE_TOKEN_PATTERN, 'This invite link is not valid'),
+})
+
 
 export const removeMemberInput = z.object({ teamId: recordId, userId: recordId })
 
