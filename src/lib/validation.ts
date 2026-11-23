@@ -144,6 +144,7 @@ export const castVoteInput = z.object({
 })
 
 export const retractVoteInput = z.object({ decisionId: recordId })
+export const closeDecisionInput = z.object({ decisionId: recordId })
 
 export const addArgumentInput = z.object({
   decisionId: recordId,

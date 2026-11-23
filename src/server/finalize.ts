@@ -33,13 +33,15 @@ import type {
   MemoDelivery,
   Team,
   TeamMember,
-  Vote,
 } from '../schemas/council-schema'
 import { DELIVERY_CHANNELS } from '../schemas/council-schema'
 import { hidesResults } from '../lib/decision-status'
 import { escapeHtml, memoToHtml, memoToPlainText } from './memo-email'
 import { createActionTools } from './action-routes'
+import { closeDecision, revealSealedVotes } from './closing'
 import { buildFallbackMemo, generateMemoText, getMemo, isEmptyDiscussion, loadMemoFacts, MEMO_MODEL_ID, saveMemo } from './memo'
+
+export { revealSealedVotes }
 
 /** Decisions finalized per run, so one run stays well inside the alarm's time limit. */
 export const FINALIZE_BATCH = 5
@@ -122,55 +124,9 @@ export async function closeDueDecisions(tools: ActionTools, now: Date): Promise<
   let closed = 0
   for (const row of open) {
     if (Date.parse(row.data.deadline) > now.getTime()) continue
-    const res = await tools.update('decisions', row.recordId, {
-      status: 'closed',
-      closedAt: now.toISOString(),
-      finalizeState: 'pending',
-    })
-    if (!res.success) {
-      console.error(`[closing-job] close ${row.recordId} failed: ${res.error}`)
-      continue
-    }
-    closed++
-    if (hidesResults(row.data)) {
-      try {
-        await revealSealedVotes(tools, row.recordId)
-      } catch (err) {
-        // finalizeDecision reveals again before writing the memo.
-        console.error(`[closing-job] reveal ${row.recordId} failed: ${loggableError(err)}`)
-      }
-    }
+    if (await closeDecision(tools, row.recordId, row.data, now)) closed++
   }
   return closed
-}
-
-/**
- * Move a closed decision's sealed votes into `votes`. Safe to re-run: a
- * vote already copied (uniqueOn decisionId+userId) is overwritten with the
- * same selection, and each sealed row is deleted only after its copy is
- * saved. Throws if anything is left, so the memo never counts half the votes.
- */
-export async function revealSealedVotes(tools: ActionTools, decisionId: string): Promise<number> {
-  const sealed = await query<Vote>(tools, 'sealed_votes', { decisionId }, 500)
-  for (const row of sealed) {
-    const vote: Vote = {
-      teamId: row.data.teamId,
-      decisionId,
-      userId: row.data.userId,
-      optionId: row.data.optionId,
-      optionIds: row.data.optionIds,
-    }
-    const created = await tools.create('votes', { ...vote })
-    if (!created.success) {
-      const existing = (await query<Vote>(tools, 'votes', { decisionId, userId: vote.userId }, 1))[0]
-      if (!existing) throw new Error(`reveal vote failed: ${created.error}`)
-      const updated = await tools.update('votes', existing.recordId, { optionId: vote.optionId, optionIds: vote.optionIds })
-      if (!updated.success) throw new Error(`reveal vote failed: ${updated.error}`)
-    }
-    const removed = await tools.remove('sealed_votes', row.recordId)
-    if (!removed.success) throw new Error(`sealed vote cleanup failed: ${removed.error}`)
-  }
-  return sealed.length
 }
 
 /** Step 2 for one decision. Returns true once nothing is left to do for it. */

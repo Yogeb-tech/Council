@@ -280,3 +280,59 @@ describe('hidden results', () => {
     expect(rows(store, 'sealed_votes')).toEqual([])
   })
 })
+
+describe('closeDecisionEarly', () => {
+  /** Add `userId` to the team with `role`, as acceptInvite would. */
+  function addMember(store: Store, teamId: string, userId: string, role: 'admin' | 'member') {
+    const now = new Date().toISOString()
+    store.get('team_members')!.set(`m-${userId}`, {
+      recordId: `m-${userId}`,
+      data: { teamId, userId, role, status: 'active' },
+      createdBy: userId,
+      createdAt: now,
+      updatedAt: now,
+    })
+  }
+
+  it('lets the owner or an admin close an open decision; the closing job then finalizes it', async () => {
+    const { store, teamId, decisionId } = await setup()
+    addMember(store, teamId, 'carol', 'admin')
+    const res = await run(store, 'carol', 'closeDecisionEarly', { decisionId })
+    expect(res.success).toBe(true)
+    expect(decisionRow(store, decisionId)).toMatchObject({ status: 'closed', finalizeState: 'pending' })
+
+    // Voting is refused straight away, before the deadline.
+    const optionId = [...store.get('options')!.values()][0].recordId
+    const vote = await run(store, 'alice', 'castVote', { decisionId, optionIds: [optionId] })
+    expect(vote).toMatchObject({ success: false, code: 'decision_closed' })
+
+    // The next closing-job run writes the final memo and emails it, even though the deadline is still ahead.
+    const h = harness(store)
+    expect(await h.go(new Date())).toEqual({ closed: 0, finalized: 1, pending: 0 })
+    expect(memoRow(store)).toEqual([expect.objectContaining({ kind: 'final' })])
+    expect(h.email).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses plain members and outsiders, and leaves the decision open', async () => {
+    const { store, teamId, decisionId } = await setup()
+    addMember(store, teamId, 'bob', 'member')
+    seedUser(store, 'eve', 'eve@example.com', 'Eve')
+    expect(await run(store, 'bob', 'closeDecisionEarly', { decisionId })).toMatchObject({ success: false, code: 'forbidden' })
+    expect(await run(store, 'eve', 'closeDecisionEarly', { decisionId })).toMatchObject({ success: false, code: 'decision_not_found' })
+    expect(decisionRow(store, decisionId).status).toBe('open')
+  })
+
+  it('reveals hidden votes immediately', async () => {
+    const { store, decisionId } = await setup({ hideResults: true })
+    const res = await run(store, 'alice', 'closeDecisionEarly', { decisionId })
+    expect(res.success).toBe(true)
+    expect(store.get('sealed_votes')!.size).toBe(0)
+    expect([...store.get('votes')!.values()].map((r) => r.data.userId)).toEqual(['alice'])
+  })
+
+  it('refuses a decision that is already closed', async () => {
+    const { store, decisionId } = await setup()
+    await run(store, 'alice', 'closeDecisionEarly', { decisionId })
+    expect(await run(store, 'alice', 'closeDecisionEarly', { decisionId })).toMatchObject({ success: false, code: 'decision_closed' })
+  })
+})

@@ -16,7 +16,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuthProfileReady } from 'deepspace'
 import { ArrowLeft, Clock } from 'lucide-react'
 import { useToast } from '@/components/ui'
-import { DecisionStatusBadge } from '@/components/council/DecisionList'
+import { closesAt, DecisionStatusBadge } from '@/components/council/DecisionList'
 import { NotFoundPanel } from '@/components/council/NotFoundPanel'
 import { MemoPanel } from '@/components/council/MemoPanel'
 import { OptionCard } from '@/components/council/OptionCard'
@@ -138,7 +138,7 @@ export default function DecisionPage() {
         </div>
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <Clock className="size-4" aria-hidden />
-          {open ? 'Voting closes' : 'Voting closed'} {formatDeadline(d.deadline)} ({relativeTime(d.deadline, now)})
+          {open ? 'Voting closes' : 'Voting closed'} {formatDeadline(closesAt(d))} ({relativeTime(closesAt(d), now)})
         </p>
         {d.description && <p className="whitespace-pre-wrap text-sm text-foreground/90">{d.description}</p>}
       </header>

@@ -3,7 +3,7 @@ import type { Env } from '../../worker'
 import type { ActionName } from '../lib/action-contract'
 import { deleteMyAccount } from './account'
 import { createInviteLink, disableInviteLink, getInviteLink, joinWithInviteLink } from './invite-links'
-import { addArgument, castVote, createDecision, deleteArgument, retractVote } from './decisions'
+import { addArgument, castVote, closeDecisionEarly, createDecision, deleteArgument, retractVote } from './decisions'
 import {
   acceptInvite,
   createTeam,
@@ -35,6 +35,7 @@ export const actions: Record<ActionName, ActionHandler<Env>> = {
   createDecision,
   castVote,
   retractVote,
+  closeDecisionEarly,
   addArgument,
   deleteArgument,
   deleteMyAccount,

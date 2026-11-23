@@ -17,11 +17,13 @@ import {
   createDecisionInput,
   firstIssue,
   retractVoteInput,
+  closeDecisionInput,
 } from '../lib/validation'
 import type { Argument, Decision, DecisionOption, Vote } from '../schemas/council-schema'
 import { fail, ok, requireTeamRole, type Membership } from './authz'
 import { ACTION_ERROR } from '../lib/action-contract'
 import { ANY_TEAM_ROLE, isTeamManager } from '../lib/team-roles'
+import { closeDecision } from '../server/closing'
 import { allowsMultipleChoices, hidesResults, isDecisionOpen, voteCollection, voteOptionIds } from '../lib/decision-status'
 
 /**
@@ -253,6 +255,34 @@ async function refreshTurnout(tools: ActionTools, decisionId: string) {
   const res = await tools.query<Record<string, unknown>>('sealed_votes', { where: { decisionId }, limit: 500 })
   if (!res.success) return
   await tools.update('decisions', decisionId, { sealedVoteCount: res.data.records.length })
+}
+
+/**
+ * Close voting now, before the deadline. Team owners and admins only.
+ * Params: { decisionId }  →  { decisionId }
+ *
+ * Does what the deadline does: marks the decision closed (so castVote and
+ * retractVote refuse from here on) and reveals hidden votes at once. The
+ * closing job then writes the final memo and emails it on its next run,
+ * within a couple of minutes, exactly as for a deadline close.
+ */
+export const closeDecisionEarly: ActionHandler<Env> = async ({ userId, params, tools }) => {
+  const parsed = closeDecisionInput.safeParse(params)
+  if (!parsed.success) return fail(firstIssue(parsed.error), ACTION_ERROR.invalidInput)
+  const { decisionId } = parsed.data
+
+  const loaded = await loadDecisionForMember(tools, decisionId, userId)
+  if ('failure' in loaded) return loaded.failure
+  if (!isTeamManager(loaded.membership.role)) {
+    return fail('Only team owners and admins can close a decision early', ACTION_ERROR.forbidden)
+  }
+  const closed = requireOpen(loaded.decision)
+  if (closed) return closed
+
+  if (!(await closeDecision(tools, decisionId, loaded.decision, new Date()))) {
+    return fail('Could not close the decision. Please try again.', ACTION_ERROR.updateFailed)
+  }
+  return ok({ decisionId })
 }
 
 // ---------------------------------------------------------------------------
