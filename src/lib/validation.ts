@@ -150,20 +150,3 @@ export const argumentIdInput = z.object({ argumentId: recordId })
 export function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? 'Invalid input'
 }
-
-/**
- * Email/password sign-up (the form only; the DeepSpace auth server is the
- * authority and re-validates). 8 is Better Auth's default minimum length.
- */
-export const signUpInput = z.object({
-  name: trimmed(80, 'Name'),
-  email: z
-    .string({ error: 'Email is required' })
-    .trim()
-    .toLowerCase()
-    .pipe(z.email({ pattern: z.regexes.html5Email, error: 'Enter a valid email address' }).max(254)),
-  password: z
-    .string({ error: 'Password is required' })
-    .min(8, 'Password must be at least 8 characters')
-    .max(128, 'Password must be at most 128 characters'),
-})

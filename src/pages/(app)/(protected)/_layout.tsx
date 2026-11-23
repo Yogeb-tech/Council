@@ -15,8 +15,8 @@
 
 import { useState } from 'react'
 import { Link, Outlet } from 'react-router-dom'
-import { AuthGate } from 'deepspace'
-import { AuthDialogs, type AuthMode } from '@/components/SignUpModal'
+import { AuthGate, AuthOverlay } from 'deepspace'
+import { SIGN_IN_PROVIDERS } from '@/lib/auth-providers'
 import { Button } from '@/components/ui'
 
 export default function ProtectedLayout() {
@@ -28,7 +28,7 @@ export default function ProtectedLayout() {
 }
 
 function SignedOutPanel() {
-  const [authMode, setAuthMode] = useState<AuthMode>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-6 py-20">
@@ -37,11 +37,8 @@ function SignedOutPanel() {
         <p className="mt-2 text-sm text-muted-foreground">
           This page is only available to signed-in users.
         </p>
-        <Button className="mt-6 w-full" onClick={() => setAuthMode('sign-in')}>
+        <Button className="mt-6 w-full" onClick={() => setShowAuthModal(true)}>
           Sign in
-        </Button>
-        <Button className="mt-2 w-full" variant="outline" onClick={() => setAuthMode('sign-up')} data-testid="sign-up-button">
-          Create an account
         </Button>
         <Link
           to="/"
@@ -51,7 +48,7 @@ function SignedOutPanel() {
         </Link>
       </div>
 
-      <AuthDialogs mode={authMode} onChange={setAuthMode} />
+      {showAuthModal && <AuthOverlay providers={[...SIGN_IN_PROVIDERS]} onClose={() => setShowAuthModal(false)} />}
     </div>
   )
 }
