@@ -73,6 +73,11 @@ email integration, `email/send` (`tools.integration('email/send', { to,
 subject, text })`). Its input schema was confirmed with
 `npx deepspace integrations info email/send`.
 
+- Each email has two versions of the memo (`src/server/memo-email.ts`):
+  HTML with real headings, bullets and bold, and clean plain text (no `#` or
+  `**`) for email apps that don't show HTML. Every piece of memo text is
+  HTML-escaped, so the AI output can't add markup or links. `email/send` has
+  no attachment field, so the memo can't be attached as a file.
 - It always sends from **DeepSpace Apps <notifications@updates.app.space>**;
   any `from` is ignored. Nobody has to connect an account or set a secret.
 - It is billed to the app owner ($0.013 per email, one email per closed

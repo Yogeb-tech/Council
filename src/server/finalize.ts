@@ -37,6 +37,7 @@ import type {
 } from '../schemas/council-schema'
 import { DELIVERY_CHANNELS } from '../schemas/council-schema'
 import { hidesResults } from '../lib/decision-status'
+import { escapeHtml, memoToHtml, memoToPlainText } from './memo-email'
 import { createActionTools } from './action-routes'
 import { buildFallbackMemo, generateMemoText, getMemo, isEmptyDiscussion, loadMemoFacts, MEMO_MODEL_ID, saveMemo } from './memo'
 
@@ -334,15 +335,29 @@ async function teamEmails(tools: ActionTools, teamId: string): Promise<string[]>
   return [...new Set(emails.filter((e): e is string => !!e))]
 }
 
+/** Plain-text email body, for email apps that don't show HTML. */
 export function emailBody(input: DeliveryInput): string {
   return [
     `Voting on "${input.decision.title}" in ${input.team.name} has closed.`,
     '',
-    input.memo,
+    memoToPlainText(input.memo),
     '',
     `Open the decision in Council: ${input.link}`,
     '',
     'This memo was written by AI from the team’s votes and arguments.',
+  ].join('\n')
+}
+
+/** HTML email body: the same content with real headings, bullets and bold. */
+export function emailHtml(input: DeliveryInput): string {
+  const link = escapeHtml(input.link)
+  return [
+    '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:#2b2520;max-width:640px">',
+    `<p style="margin:0 0 16px;color:#5c544b">Voting on <strong>${escapeHtml(input.decision.title)}</strong> in ${escapeHtml(input.team.name)} has closed.</p>`,
+    memoToHtml(input.memo),
+    `<p style="margin:24px 0 8px"><a href="${link}" style="color:#9a5b13;font-weight:600">Open the decision in Council</a></p>`,
+    '<p style="margin:0;font-size:12px;color:#8a8178">This memo was written by AI from the team’s votes and arguments.</p>',
+    '</div>',
   ].join('\n')
 }
 
@@ -355,13 +370,20 @@ export function emailBody(input: DeliveryInput): string {
 async function sendEmail(tools: ActionTools, input: DeliveryInput): Promise<DeliveryOutcome> {
   const recipients = await teamEmails(tools, input.decision.teamId)
   if (recipients.length === 0) return { status: 'skipped', detail: 'No team member has an email address.' }
-  return sendViaDeepSpaceEmail(tools, { to: recipients, subject: emailSubject(input), text: emailBody(input) })
+  return sendViaDeepSpaceEmail(tools, {
+    to: recipients,
+    subject: emailSubject(input),
+    text: emailBody(input),
+    html: emailHtml(input),
+  })
 }
 
 export interface EmailMessage {
   to: string[]
   subject: string
   text: string
+  /** Optional HTML version; email apps that render HTML show it instead of `text`. */
+  html?: string
 }
 
 export function emailSubject(input: DeliveryInput) {
@@ -376,6 +398,7 @@ export async function sendViaDeepSpaceEmail(tools: ActionTools, message: EmailMe
     to: message.to,
     subject: message.subject,
     text: message.text,
+    ...(message.html ? { html: message.html } : {}),
   })
   if (res.success) return { status: 'sent' }
   return { status: 'failed', detail: `Email: ${res.error ?? 'send failed'}`.slice(0, 300) }
